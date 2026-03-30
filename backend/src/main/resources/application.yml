@@ -1,0 +1,31 @@
+spring:
+  application:
+    name: monitoring-backend
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/monitoring?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai}
+    username: ${SPRING_DATASOURCE_USERNAME:monitoring}
+    password: ${SPRING_DATASOURCE_PASSWORD:monitoring}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+
+monitoring:
+  prometheus:
+    base-url: ${MONITORING_PROMETHEUS_BASE_URL:http://localhost:19090}
+  grafana:
+    base-url: ${MONITORING_GRAFANA_BASE_URL:http://localhost:13000}
+  skywalking:
+    base-url: ${MONITORING_SKYWALKING_BASE_URL:http://localhost:18082}

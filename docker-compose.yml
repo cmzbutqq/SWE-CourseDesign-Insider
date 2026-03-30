@@ -1,0 +1,178 @@
+name: ${COMPOSE_PROJECT_NAME:-scut-monitoring}
+
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-monitoring}
+      MYSQL_USER: ${MYSQL_USER:-monitoring}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-monitoring}
+    ports:
+      - "13306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - monitoring-net
+
+  backend:
+    image: maven:3.9-eclipse-temurin-21
+    working_dir: /workspace/backend
+    command: >
+      sh -c "mvn -q -DskipTests dependency:go-offline &&
+      mvn spring-boot:run"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-monitoring}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:-monitoring}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:-monitoring}
+      SERVER_PORT: 8080
+      MONITORING_GRAFANA_BASE_URL: http://localhost:${GRAFANA_PORT:-13000}
+      MONITORING_SKYWALKING_BASE_URL: http://localhost:${SKYWALKING_UI_PORT:-18082}
+      MONITORING_PROMETHEUS_BASE_URL: http://prometheus:9090
+    ports:
+      - "${BACKEND_PORT:-18081}:8080"
+    volumes:
+      - ./:/workspace
+      - backend-m2:/root/.m2
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - monitoring-net
+
+  frontend:
+    image: node:20-alpine
+    working_dir: /workspace/frontend
+    command: >
+      sh -c "npm install &&
+      npm run dev -- --host 0.0.0.0 --port 5173"
+    environment:
+      VITE_API_BASE_URL: http://localhost:${BACKEND_PORT:-18081}/api
+    ports:
+      - "${FRONTEND_PORT:-15173}:5173"
+    volumes:
+      - ./:/workspace
+      - frontend-node-modules:/workspace/frontend/node_modules
+    depends_on:
+      - backend
+    networks:
+      - monitoring-net
+
+  agent-dev:
+    image: golang:1.23
+    working_dir: /workspace/agent
+    command: >
+      sh -c "go mod download &&
+      sleep infinity"
+    environment:
+      AGENT_SERVER_URL: http://backend:8080/api
+    volumes:
+      - ./:/workspace
+      - agent-go-cache:/go/pkg/mod
+    profiles: ["dev"]
+    networks:
+      - monitoring-net
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.enable-lifecycle
+    ports:
+      - "${PROMETHEUS_PORT:-19090}:9090"
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      - backend
+    profiles: ["observability"]
+    networks:
+      - monitoring-net
+
+  grafana:
+    image: grafana/grafana:11.2.2
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    ports:
+      - "${GRAFANA_PORT:-13000}:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    profiles: ["observability"]
+    networks:
+      - monitoring-net
+
+  skywalking-oap:
+    image: apache/skywalking-oap-server:10.0.1
+    environment:
+      SW_STORAGE: h2
+    ports:
+      - "${SKYWALKING_OAP_GRPC_PORT:-11800}:11800"
+      - "${SKYWALKING_OAP_HTTP_PORT:-12800}:12800"
+    profiles: ["observability"]
+    networks:
+      - monitoring-net
+
+  skywalking-ui:
+    image: apache/skywalking-ui:10.0.1
+    environment:
+      SW_OAP_ADDRESS: http://skywalking-oap:12800
+    ports:
+      - "${SKYWALKING_UI_PORT:-18082}:8080"
+    depends_on:
+      - skywalking-oap
+    profiles: ["observability"]
+    networks:
+      - monitoring-net
+
+  app-node:
+    build:
+      context: .
+      dockerfile: demo-nodes/app-node/Dockerfile
+    environment:
+      AGENT_NODE_NAME: app-node
+      AGENT_SERVER_URL: http://backend:8080/api
+      AGENT_REGISTER_INTERVAL: ${AGENT_REGISTER_INTERVAL:-15s}
+      AGENT_HEARTBEAT_INTERVAL: ${AGENT_HEARTBEAT_INTERVAL:-10s}
+      SW_AGENT_COLLECTOR_BACKEND_SERVICES: skywalking-oap:11800
+    depends_on:
+      - backend
+    profiles: ["nodes"]
+    networks:
+      - monitoring-net
+
+  middleware-node:
+    build:
+      context: .
+      dockerfile: demo-nodes/middleware-node/Dockerfile
+    environment:
+      AGENT_NODE_NAME: middleware-node
+      AGENT_SERVER_URL: http://backend:8080/api
+      AGENT_REGISTER_INTERVAL: ${AGENT_REGISTER_INTERVAL:-15s}
+      AGENT_HEARTBEAT_INTERVAL: ${AGENT_HEARTBEAT_INTERVAL:-10s}
+    depends_on:
+      - backend
+    profiles: ["nodes"]
+    networks:
+      - monitoring-net
+
+volumes:
+  mysql-data:
+  backend-m2:
+  frontend-node-modules:
+  agent-go-cache:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  monitoring-net:

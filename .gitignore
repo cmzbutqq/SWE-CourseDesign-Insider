@@ -1,12 +1,21 @@
 .firecrawl/
-
-.DS_Store
-
+.env
+.m2/
+.mvn/
 .idea/
 .vscode/
+.superpowers/
+.cursor/
+
+.DS_Store
 
 node_modules/
 dist/
 build/
+coverage/
+frontend/node_modules/
+backend/target/
+demo-apps/sample-service/target/
+agent/.cache/
 
 *.log
