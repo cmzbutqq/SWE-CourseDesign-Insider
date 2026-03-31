@@ -50,10 +50,12 @@
 4. 访问入口：
 
 - 前端：`http://localhost:15173`
-- 后端：`http://localhost:18081/api`
+- 后端（示例接口）：`http://localhost:18081/api/overview`
 - Grafana：`http://localhost:13000`
 - Prometheus：`http://localhost:19090`
 - SkyWalking UI：`http://localhost:18082`
+
+说明：`http://localhost:18081/api` 根路径未单独定义路由，返回 `404` 属于正常现象，请访问上述具体接口（如 `/api/overview`、`/api/nodes`、`/api/services`）。
 
 ## 常用命令
 
