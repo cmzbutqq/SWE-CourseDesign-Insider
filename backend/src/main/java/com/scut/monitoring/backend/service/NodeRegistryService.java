@@ -1,6 +1,10 @@
 package com.scut.monitoring.backend.service;
 
 import com.scut.monitoring.backend.dto.AgentRegisterRequest;
+import com.scut.monitoring.backend.dto.AnomaliesDTO;
+import com.scut.monitoring.backend.dto.AnomalyNodeDTO;
+import com.scut.monitoring.backend.dto.AnomalyServiceDTO;
+import com.scut.monitoring.backend.dto.CounterGroupDTO;
 import com.scut.monitoring.backend.dto.HeartbeatRequest;
 import com.scut.monitoring.backend.dto.NodeDetailResponse;
 import com.scut.monitoring.backend.dto.NodeSummaryResponse;
@@ -116,18 +120,87 @@ public class NodeRegistryService {
 
     @Transactional(readOnly = true)
     public OverviewResponse overview() {
-        List<NodeSummaryResponse> nodes = listNodes();
+        // 获取所有节点和服务
+        List<ManagedNode> allNodes = managedNodeRepository.findAll();
+        long totalServices = discoveredServiceRepository.count();
+        
+        // 统计节点状态
+        long onlineCount = allNodes.stream()
+                .filter(node -> "ONLINE".equalsIgnoreCase(node.getStatus()))
+                .count();
+        long offlineCount = allNodes.size() - onlineCount;
+        
+        // 构建节点统计
+        CounterGroupDTO nodesCounter = new CounterGroupDTO(
+                allNodes.size(),      // total
+                onlineCount,          // online
+                offlineCount,         // offline
+                0,                    // warning（暂时为0，需要实现详细指标）
+                0,                    // healthy（不用）
+                0                     // abnormal（不用）
+        );
+        
+        // 构建服务统计（简化版：暂时全部标记为 healthy）
+        CounterGroupDTO servicesCounter = new CounterGroupDTO(
+                totalServices,        // total
+                0,                    // online（不用）
+                0,                    // offline（不用）
+                0,                    // warning（不用）
+                totalServices,        // healthy（暂时等于总数）
+                0                     // abnormal（0表示无异常服务）
+        );
+        
+        // 收集异常节点和服务
+        AnomaliesDTO anomalies = buildAnomalies(allNodes);
+        
+        // 快捷链接
         List<String> quickLinks = List.of(
                 "Prometheus: " + prometheusBaseUrl,
                 "Grafana: " + grafanaBaseUrl,
                 "SkyWalking: " + skywalkingBaseUrl
         );
+        
         return new OverviewResponse(
-                nodes.size(),
-                discoveredServiceRepository.count(),
-                nodes.stream().filter(node -> "ONLINE".equalsIgnoreCase(node.status())).count(),
+                nodesCounter,
+                servicesCounter,
+                0L,                   // unresolvedAlerts（暂时为0）
+                anomalies,
                 quickLinks
         );
+    }
+
+    /**
+     * 构建异常数据：离线节点和异常服务
+     */
+    private AnomaliesDTO buildAnomalies(List<ManagedNode> allNodes) {
+        // 异常节点：筛选离线或在线时间很久未更新的节点
+        List<AnomalyNodeDTO> anomalyNodes = allNodes.stream()
+                .filter(node -> !"ONLINE".equalsIgnoreCase(node.getStatus()))
+                .map(node -> new AnomalyNodeDTO(
+                        node.getId(),
+                        node.getNodeName(),
+                        node.getStatus(),
+                        "OFFLINE",
+                        node.getLastSeenAt(),
+                        null,  // cpuUsage
+                        null,  // memoryUsage
+                        calculateDurationSeconds(node.getLastSeenAt())
+                ))
+                .sorted(Comparator.comparingLong(AnomalyNodeDTO::durationSeconds).reversed())
+                .toList();
+        
+        // 异常服务：暂时为空列表（等待后端实现服务健康检查）
+        List<AnomalyServiceDTO> anomalyServices = List.of();
+        
+        return new AnomaliesDTO(anomalyNodes, anomalyServices);
+    }
+
+    /**
+     * 计算从指定时间到现在的秒数
+     */
+    private Long calculateDurationSeconds(Instant lastSeen) {
+        if (lastSeen == null) return 0L;
+        return Math.max(0, Instant.now().getEpochSecond() - lastSeen.getEpochSecond());
     }
 
     private NodeSummaryResponse toNodeSummary(ManagedNode node) {
