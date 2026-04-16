@@ -94,12 +94,13 @@ const overviewData = reactive({
 
 const error = ref('');
 const isLoading = ref(false);
+const hasLoaded = ref(false);
 const autoRefresh = ref(true);
 const pollingInterval = ref(null);
 const POLL_INTERVAL = 15000; // 15秒轮询一次
 
 // 计算属性
-const hasData = computed(() => overviewData.nodes.total > 0);
+const hasData = computed(() => hasLoaded.value);
 
 // 加载数据
 async function load() {
@@ -108,6 +109,7 @@ async function load() {
   try {
     const data = await fetchOverview();
     Object.assign(overviewData, data);
+    hasLoaded.value = true;
   } catch (err) {
     error.value = err.message || '获取数据失败';
     console.error('Overview load error:', err);

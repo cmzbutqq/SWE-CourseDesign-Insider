@@ -9,29 +9,6 @@ export const STATUS_COLORS = {
   OFFLINE: '#8C8C8C'     // 灰色 - 失联/离线
 };
 
-export const STATUS_LABELS = {
-  HEALTHY: '运行正常',
-  WARNING: '需关注',
-  CRITICAL: '存在异常',
-  OFFLINE: '失联'
-};
-
-/**
- * 根据不同指标确定卡片状态
- */
-export function getNodeStatus(node) {
-  if (node.status === 'OFFLINE' || node.status !== 'ONLINE') {
-    return { color: STATUS_COLORS.OFFLINE, label: '离线', status: 'OFFLINE' };
-  }
-  
-  // 如果有高CPU/内存高负载指示器
-  if (node.warning > 0) {
-    return { color: STATUS_COLORS.WARNING, label: '需关注', status: 'WARNING' };
-  }
-  
-  return { color: STATUS_COLORS.HEALTHY, label: '运行正常', status: 'HEALTHY' };
-}
-
 export function getNodesStatus(nodes) {
   if (nodes.offline > 0) {
     return { color: STATUS_COLORS.CRITICAL, label: '有离线', status: 'CRITICAL' };
