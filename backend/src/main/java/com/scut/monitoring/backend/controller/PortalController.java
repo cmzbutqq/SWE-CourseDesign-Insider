@@ -4,16 +4,18 @@ import com.scut.monitoring.backend.dto.NodeDetailResponse;
 import com.scut.monitoring.backend.dto.NodeSummaryResponse;
 import com.scut.monitoring.backend.dto.OverviewResponse;
 import com.scut.monitoring.backend.dto.ServiceSummaryResponse;
+import com.scut.monitoring.backend.dto.TrendsResponse;
 import com.scut.monitoring.backend.service.NodeRegistryService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
 @RestController
-@RequestMapping("/api")
+@RequestMapping(value = "/api", produces = "application/json;charset=UTF-8")
 public class PortalController {
 
     private final NodeRegistryService nodeRegistryService;
@@ -40,5 +42,10 @@ public class PortalController {
     @GetMapping("/services")
     public List<ServiceSummaryResponse> services() {
         return nodeRegistryService.listServices();
+    }
+
+    @GetMapping(value = "/trends", produces = "application/json;charset=UTF-8")
+    public TrendsResponse trends(@RequestParam(defaultValue = "1") double hours) {
+        return nodeRegistryService.getTrends(hours);
     }
 }

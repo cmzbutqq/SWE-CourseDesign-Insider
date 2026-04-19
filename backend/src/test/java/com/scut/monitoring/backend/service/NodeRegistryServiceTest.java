@@ -8,6 +8,7 @@ import com.scut.monitoring.backend.model.ManagedNode;
 import com.scut.monitoring.backend.repository.DiscoveredServiceRepository;
 import com.scut.monitoring.backend.repository.HeartbeatEventRepository;
 import com.scut.monitoring.backend.repository.ManagedNodeRepository;
+import com.scut.monitoring.backend.repository.MetricsSnapshotRepository;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -24,11 +25,13 @@ class NodeRegistryServiceTest {
     private final ManagedNodeRepository managedNodeRepository = mock(ManagedNodeRepository.class);
     private final DiscoveredServiceRepository discoveredServiceRepository = mock(DiscoveredServiceRepository.class);
     private final HeartbeatEventRepository heartbeatEventRepository = mock(HeartbeatEventRepository.class);
+    private final MetricsSnapshotRepository metricsSnapshotRepository = mock(MetricsSnapshotRepository.class);
 
     private final NodeRegistryService nodeRegistryService = new NodeRegistryService(
             managedNodeRepository,
             discoveredServiceRepository,
             heartbeatEventRepository,
+            metricsSnapshotRepository,
             "http://localhost:19090",
             "http://localhost:13000",
             "http://localhost:18082"

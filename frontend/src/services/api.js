@@ -23,3 +23,7 @@ export function fetchNodeDetail(id) {
 export function fetchServices() {
   return fetchJson("/services");
 }
+
+export function fetchTrends(hours = 1) {
+  return fetchJson(`/trends?hours=${hours}`);
+}

@@ -40,6 +40,9 @@
       <!-- 第二层：异常前置聚焦区 -->
       <AnomalyPanel :anomalies="overviewData.anomalies" />
 
+      <!-- 第二层-B：趋势分析区 -->
+      <TrendsChart />
+
       <!-- 第三层：节点与服务列表（下移第二屏） -->
       <div class="bottom-section">
         <h3>节点与服务详情</h3>
@@ -82,6 +85,7 @@ import { onMounted, onUnmounted, reactive, ref, computed, watch } from 'vue';
 import { fetchOverview } from '../services/api.js';
 import KPICards from '../components/KPICards.vue';
 import AnomalyPanel from '../components/AnomalyPanel.vue';
+import TrendsChart from '../components/TrendsChart.vue';
 
 // 数据状态
 const overviewData = reactive({
