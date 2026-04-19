@@ -89,7 +89,7 @@ import {
   getAlertsStatus,
   STATUS_COLORS
 } from '../utils/status.js';
-import { ref, computed } from 'vue';
+import { ref, computed, onUnmounted } from 'vue';
 
 const props = defineProps({
   data: {
@@ -118,10 +118,14 @@ function formatTime(date) {
   return `${hours}:${minutes}`;
 }
 
-// 定期更新时间显示
-setInterval(() => {
+// 定期更新时间显示，并在组件卸载时清理
+const updateTimeInterval = setInterval(() => {
   lastUpdateTime.value = formatTime(new Date());
 }, 60000);
+
+onUnmounted(() => {
+  clearInterval(updateTimeInterval);
+});
 </script>
 
 <style scoped>
