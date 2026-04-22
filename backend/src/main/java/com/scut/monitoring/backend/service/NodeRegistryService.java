@@ -269,7 +269,8 @@ public class NodeRegistryService {
         
         // 生成一些变化的异常数据用于演示
         long warningNodes = Math.max(0, (long)(Math.random() * 2)); // 0-1个警告节点
-        long abnormalServices = Math.max(0, (long)(Math.random() * 3)); // 0-2个异常服务
+        long abnormalServices = Math.min(totalServices, Math.max(0, (long) (Math.random() * 3))); // 0-2个异常服务，且不会超过总数
+        long healthyServices = Math.max(0, totalServices - abnormalServices);
         long unresolvedAlerts = abnormalServices + warningNodes; // 未解决告警数
         
         MetricsSnapshot snapshot = new MetricsSnapshot(
@@ -279,12 +280,17 @@ public class NodeRegistryService {
                 offlineCount,         // offlineNodes
                 warningNodes,         // warningNodes
                 totalServices,        // totalServices
-                totalServices - abnormalServices, // healthyServices
+                healthyServices,      // healthyServices
                 abnormalServices,     // abnormalServices
                 unresolvedAlerts      // unresolvedAlerts
         );
         
         metricsSnapshotRepository.save(snapshot);
+    }
+
+    @Transactional
+    public int cleanupOldSnapshots(Instant cutoffTime) {
+        return metricsSnapshotRepository.deleteOlderThan(cutoffTime);
     }
 
     /**

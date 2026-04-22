@@ -5,6 +5,7 @@ import com.scut.monitoring.backend.dto.DiscoveredServicePayload;
 import com.scut.monitoring.backend.dto.HeartbeatRequest;
 import com.scut.monitoring.backend.model.HeartbeatEvent;
 import com.scut.monitoring.backend.model.ManagedNode;
+import com.scut.monitoring.backend.model.MetricsSnapshot;
 import com.scut.monitoring.backend.repository.DiscoveredServiceRepository;
 import com.scut.monitoring.backend.repository.HeartbeatEventRepository;
 import com.scut.monitoring.backend.repository.ManagedNodeRepository;
@@ -12,6 +13,7 @@ import com.scut.monitoring.backend.repository.MetricsSnapshotRepository;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -89,5 +91,33 @@ class NodeRegistryServiceTest {
         assertThat(captor.getValue().getStatus()).isEqualTo("ONLINE");
         assertThat(response.nodeName()).isEqualTo("middleware-node");
         assertThat(response.status()).isEqualTo("ONLINE");
+    }
+
+    @Test
+    void saveMetricsSnapshotShouldNeverPersistNegativeHealthyServices() {
+        when(managedNodeRepository.findAll()).thenReturn(List.of());
+        when(discoveredServiceRepository.count()).thenReturn(0L);
+
+        nodeRegistryService.saveMetricsSnapshot();
+
+        ArgumentCaptor<MetricsSnapshot> snapshotCaptor = ArgumentCaptor.forClass(MetricsSnapshot.class);
+        verify(metricsSnapshotRepository).save(snapshotCaptor.capture());
+        MetricsSnapshot snapshot = snapshotCaptor.getValue();
+
+        assertThat(snapshot.getTotalServices()).isZero();
+        assertThat(snapshot.getAbnormalServices()).isGreaterThanOrEqualTo(0);
+        assertThat(snapshot.getHealthyServices()).isGreaterThanOrEqualTo(0);
+        assertThat(snapshot.getHealthyServices()).isLessThanOrEqualTo(snapshot.getTotalServices());
+    }
+
+    @Test
+    void cleanupOldSnapshotsShouldDelegateDeletionToRepository() {
+        Instant cutoff = Instant.parse("2026-01-01T00:00:00Z");
+        when(metricsSnapshotRepository.deleteOlderThan(cutoff)).thenReturn(8);
+
+        int deleted = nodeRegistryService.cleanupOldSnapshots(cutoff);
+
+        assertThat(deleted).isEqualTo(8);
+        verify(metricsSnapshotRepository).deleteOlderThan(cutoff);
     }
 }
