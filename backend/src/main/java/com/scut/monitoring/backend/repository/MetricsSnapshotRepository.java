@@ -2,6 +2,7 @@ package com.scut.monitoring.backend.repository;
 
 import com.scut.monitoring.backend.model.MetricsSnapshot;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -27,6 +28,7 @@ public interface MetricsSnapshotRepository extends JpaRepository<MetricsSnapshot
     /**
      * 删除指定时间前的快照数据（用于数据清理）
      */
+    @Modifying
     @Query("DELETE FROM MetricsSnapshot m WHERE m.timestamp < :cutoffTime")
-    void deleteOlderThan(@Param("cutoffTime") Instant cutoffTime);
+    int deleteOlderThan(@Param("cutoffTime") Instant cutoffTime);
 }

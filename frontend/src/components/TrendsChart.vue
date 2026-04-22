@@ -38,7 +38,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import * as echarts from 'echarts';
 import { fetchTrends } from '../services/api.js';
 
@@ -58,6 +58,11 @@ const error = ref('');
 const chartContainer = ref(null);
 const trendsData = ref(null);
 let chart = null;
+const handleWindowResize = () => {
+  if (chart) {
+    chart.resize();
+  }
+};
 
 const hasData = computed(() => trendsData.value && trendsData.value.trends.length > 0);
 
@@ -73,7 +78,6 @@ const colors = {
 
 // 加载趋势数据
 async function loadTrendData(hours) {
-  console.log('Loading trends for hours:', hours);
   selectedHours.value = hours;
   isLoading.value = true;
   error.value = '';
@@ -81,25 +85,15 @@ async function loadTrendData(hours) {
   try {
     // 直接传递 hours，不要用 Math.ceil 以保持低于1小时的校准
     const data = await fetchTrends(hours);
-    console.log('Trends data received:', data);
-    console.log('Data type:', typeof data);
-    console.log('Data.trends:', data.trends);
-    console.log('Data.trends type:', typeof data.trends);
-    console.log('Data.trends is Array:', Array.isArray(data.trends));
-    console.log('Data.trends length:', data.trends ? data.trends.length : 'undefined');
-    
     trendsData.value = data;
-    
-    console.log('After assignment - trendsData.value:', trendsData.value);
-    console.log('hasData computed value:', trendsData.value && trendsData.value.trends && trendsData.value.trends.length > 0);
-    
-    // 等待DOM更新完成，可能需要多次
+    isLoading.value = false;
+
+    if (!data?.trends?.length) {
+      return;
+    }
+
+    // 等待DOM更新完成后再初始化图表，避免 display:none 时计算到 0 尺寸
     await nextTick();
-    console.log('First nextTick completed');
-    
-    // 再等一次确保 ref 绑定完成
-    await nextTick();
-    console.log('Second nextTick completed, calling renderChart');
     renderChart(data);
   } catch (err) {
     error.value = err.message || '加载趋势数据失败';
@@ -111,44 +105,20 @@ async function loadTrendData(hours) {
 
 // 绘制图表
 function renderChart(data) {
-  console.log('renderChart called with data:', data);
-  
-  let container = chartContainer.value;
-  console.log('chartContainer.value:', container);
-  
-  // 如果 ref 为 null，尝试用 querySelector 获取
-  if (!container) {
-    console.warn('chartContainer.value is null, trying querySelector...');
-    container = document.querySelector('.chart-container');
-    console.log('querySelector result:', container);
-  }
-  
-  if (!data.trends || data.trends.length === 0) {
-    console.log('No trends data');
+  const container = chartContainer.value;
+  if (!data?.trends?.length || !container) {
     return;
   }
-  
-  if (!container) {
-    console.error('Chart container still not found!');
-    return;
-  }
-  
-  // 检查容器的尺寸
-  const containerWidth = container?.offsetWidth;
-  const containerHeight = container?.offsetHeight;
-  console.log('Container dimensions:', containerWidth, 'x', containerHeight);
-  
+
   if (!chart) {
     chart = echarts.init(container);
-    console.log('Chart initialized');
-  } else {
-    // 清理旧图表
+  } else if (chart.getDom() !== container) {
     chart.dispose();
     chart = echarts.init(container);
   }
 
   // 准备图表系列数据
-  const series = data.trends.map((trend, index) => {
+  const series = data.trends.map((trend) => {
     const metricColor = getColorForMetric(trend.metricName);
     return {
       name: trend.metricName,
@@ -175,15 +145,6 @@ function renderChart(data) {
       minute: '2-digit' 
     });
   }) || [];
-
-  // 创建Y轴单位映射
-  const yAxisUnits = {};
-  data.trends.forEach(trend => {
-    if (!yAxisUnits[trend.unit]) {
-      yAxisUnits[trend.unit] = [];
-    }
-    yAxisUnits[trend.unit].push(trend.metricName);
-  });
 
   const option = {
     title: {
@@ -257,24 +218,8 @@ function renderChart(data) {
     series: series
   };
 
-  console.log('Setting chart option...');
-  chart.setOption(option);
-  console.log('Chart option set successfully');
-  
-  // 延迟后重新计算尺寸
-  setTimeout(() => {
-    console.log('Calling chart.resize()');
-    if (chart) {
-      chart.resize();
-    }
-  }, 100);
-
-  // 容器尺寸变化时自动适应
-  window.addEventListener('resize', () => {
-    if (chart) {
-      chart.resize();
-    }
-  });
+  chart.setOption(option, true);
+  chart.resize();
 }
 
 // 根据指标名称获取颜色
@@ -297,13 +242,16 @@ function getTrendUnit(metricName, trends) {
 
 // 生命周期
 onMounted(() => {
+  window.addEventListener('resize', handleWindowResize);
   loadTrendData(selectedHours.value);
 });
 
 // 清理
 onUnmounted(() => {
+  window.removeEventListener('resize', handleWindowResize);
   if (chart) {
     chart.dispose();
+    chart = null;
   }
 });
 </script>
