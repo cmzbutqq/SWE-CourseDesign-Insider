@@ -22,8 +22,10 @@ import com.scut.monitoring.backend.repository.ManagedNodeRepository;
 import com.scut.monitoring.backend.repository.MetricsSnapshotRepository;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.util.Comparator;
@@ -31,6 +33,8 @@ import java.util.List;
 
 @Service
 public class NodeRegistryService {
+    private static final double MAX_TRENDS_QUERY_HOURS = 24d * 30d;
+
 
     private final ManagedNodeRepository managedNodeRepository;
     private final DiscoveredServiceRepository discoveredServiceRepository;
@@ -299,6 +303,8 @@ public class NodeRegistryService {
      */
     @Transactional(readOnly = true)
     public TrendsResponse getTrends(double hoursBack) {
+        validateHoursBack(hoursBack);
+
         Instant now = Instant.now();
         Instant startTime = now.minusSeconds((long) (hoursBack * 3600));
         
@@ -392,6 +398,15 @@ public class NodeRegistryService {
         
         String timeRangeDesc = hoursBack < 1 ? "最近" + (hoursBack * 60) + "分钟" : "最近" + hoursBack + "小时";
         return new TrendsResponse(timeRangeDesc, startTime.toEpochMilli(), now.toEpochMilli(), trends);
+    }
+
+    private void validateHoursBack(double hoursBack) {
+        if (!Double.isFinite(hoursBack) || hoursBack <= 0 || hoursBack > MAX_TRENDS_QUERY_HOURS) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "hours must be a finite number within (0, " + MAX_TRENDS_QUERY_HOURS + "]"
+            );
+        }
     }
 }
 
