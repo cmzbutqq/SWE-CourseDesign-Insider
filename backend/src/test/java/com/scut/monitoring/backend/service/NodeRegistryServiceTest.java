@@ -12,14 +12,18 @@ import com.scut.monitoring.backend.repository.ManagedNodeRepository;
 import com.scut.monitoring.backend.repository.MetricsSnapshotRepository;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class NodeRegistryServiceTest {
@@ -119,5 +123,58 @@ class NodeRegistryServiceTest {
 
         assertThat(deleted).isEqualTo(8);
         verify(metricsSnapshotRepository).deleteOlderThan(cutoff);
+    }
+
+    @Test
+    void getTrendsShouldRejectOverflowHoursAsBadRequest() {
+        ResponseStatusException exception = org.assertj.core.api.Assertions.catchThrowableOfType(
+                () -> nodeRegistryService.getTrends(1e308),
+                ResponseStatusException.class
+        );
+        assertThat(exception).isNotNull();
+        assertThat(exception.getStatusCode().value()).isEqualTo(400);
+        verifyNoInteractions(metricsSnapshotRepository);
+    }
+
+    @Test
+    void getTrendsShouldRejectNonPositiveAndNonFiniteHoursAsBadRequest() {
+        List<Double> invalidHours = List.of(0d, -0.5d, Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY);
+
+        for (Double invalidHour : invalidHours) {
+            ResponseStatusException exception = org.assertj.core.api.Assertions.catchThrowableOfType(
+                    () -> nodeRegistryService.getTrends(invalidHour),
+                    ResponseStatusException.class
+            );
+            assertThat(exception).isNotNull();
+            assertThat(exception.getStatusCode().value()).isEqualTo(400);
+        }
+
+        verifyNoInteractions(metricsSnapshotRepository);
+    }
+
+    @Test
+    void getTrendsShouldRejectHoursBeyondMaximumWindow() {
+        ResponseStatusException exception = org.assertj.core.api.Assertions.catchThrowableOfType(
+                () -> nodeRegistryService.getTrends(721d),
+                ResponseStatusException.class
+        );
+        assertThat(exception).isNotNull();
+        assertThat(exception.getStatusCode().value()).isEqualTo(400);
+        verifyNoInteractions(metricsSnapshotRepository);
+    }
+
+    @Test
+    void getTrendsShouldAllowHoursAtMaximumWindow() {
+        when(metricsSnapshotRepository.findByTimestampRange(
+                org.mockito.ArgumentMatchers.any(Instant.class),
+                org.mockito.ArgumentMatchers.any(Instant.class)
+        )).thenReturn(List.of());
+
+        assertThatNoException().isThrownBy(() -> nodeRegistryService.getTrends(720d));
+        verify(metricsSnapshotRepository).findByTimestampRange(
+                org.mockito.ArgumentMatchers.any(Instant.class),
+                org.mockito.ArgumentMatchers.any(Instant.class)
+        );
+        verify(metricsSnapshotRepository, never()).save(org.mockito.ArgumentMatchers.any());
     }
 }
