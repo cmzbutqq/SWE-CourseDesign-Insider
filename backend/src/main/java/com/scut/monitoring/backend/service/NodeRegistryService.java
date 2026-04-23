@@ -10,16 +10,22 @@ import com.scut.monitoring.backend.dto.NodeDetailResponse;
 import com.scut.monitoring.backend.dto.NodeSummaryResponse;
 import com.scut.monitoring.backend.dto.OverviewResponse;
 import com.scut.monitoring.backend.dto.ServiceSummaryResponse;
+import com.scut.monitoring.backend.dto.TrendData;
+import com.scut.monitoring.backend.dto.TrendsResponse;
 import com.scut.monitoring.backend.model.DiscoveredService;
 import com.scut.monitoring.backend.model.HeartbeatEvent;
 import com.scut.monitoring.backend.model.ManagedNode;
+import com.scut.monitoring.backend.model.MetricsSnapshot;
 import com.scut.monitoring.backend.repository.DiscoveredServiceRepository;
 import com.scut.monitoring.backend.repository.HeartbeatEventRepository;
 import com.scut.monitoring.backend.repository.ManagedNodeRepository;
+import com.scut.monitoring.backend.repository.MetricsSnapshotRepository;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.util.Comparator;
@@ -27,10 +33,13 @@ import java.util.List;
 
 @Service
 public class NodeRegistryService {
+    private static final double MAX_TRENDS_QUERY_HOURS = 24d * 30d;
+
 
     private final ManagedNodeRepository managedNodeRepository;
     private final DiscoveredServiceRepository discoveredServiceRepository;
     private final HeartbeatEventRepository heartbeatEventRepository;
+    private final MetricsSnapshotRepository metricsSnapshotRepository;
     private final String grafanaBaseUrl;
     private final String skywalkingBaseUrl;
     private final String prometheusBaseUrl;
@@ -39,6 +48,7 @@ public class NodeRegistryService {
             ManagedNodeRepository managedNodeRepository,
             DiscoveredServiceRepository discoveredServiceRepository,
             HeartbeatEventRepository heartbeatEventRepository,
+            MetricsSnapshotRepository metricsSnapshotRepository,
             @Value("${monitoring.prometheus.base-url:http://localhost:19090}") String prometheusBaseUrl,
             @Value("${monitoring.grafana.base-url:http://localhost:13000}") String grafanaBaseUrl,
             @Value("${monitoring.skywalking.base-url:http://localhost:18082}") String skywalkingBaseUrl
@@ -46,6 +56,7 @@ public class NodeRegistryService {
         this.managedNodeRepository = managedNodeRepository;
         this.discoveredServiceRepository = discoveredServiceRepository;
         this.heartbeatEventRepository = heartbeatEventRepository;
+        this.metricsSnapshotRepository = metricsSnapshotRepository;
         this.prometheusBaseUrl = prometheusBaseUrl;
         this.grafanaBaseUrl = grafanaBaseUrl;
         this.skywalkingBaseUrl = skywalkingBaseUrl;
@@ -245,4 +256,157 @@ public class NodeRegistryService {
                 service.getNode().getNodeName()
         );
     }
+
+    /**
+     * 保存当前的指标快照（用于趋势分析）
+     * 通常由定时任务调用，每5分钟调用一次
+     */
+    @Transactional
+    public void saveMetricsSnapshot() {
+        List<ManagedNode> allNodes = managedNodeRepository.findAll();
+        long totalServices = discoveredServiceRepository.count();
+        
+        long onlineCount = allNodes.stream()
+                .filter(node -> "ONLINE".equalsIgnoreCase(node.getStatus()))
+                .count();
+        long offlineCount = allNodes.size() - onlineCount;
+        
+        // 生成一些变化的异常数据用于演示
+        long warningNodes = Math.max(0, (long)(Math.random() * 2)); // 0-1个警告节点
+        long abnormalServices = Math.min(totalServices, Math.max(0, (long) (Math.random() * 3))); // 0-2个异常服务，且不会超过总数
+        long healthyServices = Math.max(0, totalServices - abnormalServices);
+        long unresolvedAlerts = abnormalServices + warningNodes; // 未解决告警数
+        
+        MetricsSnapshot snapshot = new MetricsSnapshot(
+                Instant.now(),
+                allNodes.size(),      // totalNodes
+                onlineCount,          // onlineNodes
+                offlineCount,         // offlineNodes
+                warningNodes,         // warningNodes
+                totalServices,        // totalServices
+                healthyServices,      // healthyServices
+                abnormalServices,     // abnormalServices
+                unresolvedAlerts      // unresolvedAlerts
+        );
+        
+        metricsSnapshotRepository.save(snapshot);
+    }
+
+    @Transactional
+    public int cleanupOldSnapshots(Instant cutoffTime) {
+        return metricsSnapshotRepository.deleteOlderThan(cutoffTime);
+    }
+
+    /**
+     * 获取趋势数据
+     * @param hoursBack 往前查询多少小时的数据（支持小数如 0.25, 0.5 等）
+     */
+    @Transactional(readOnly = true)
+    public TrendsResponse getTrends(double hoursBack) {
+        validateHoursBack(hoursBack);
+
+        Instant now = Instant.now();
+        Instant startTime = now.minusSeconds((long) (hoursBack * 3600));
+        
+        List<MetricsSnapshot> snapshots = metricsSnapshotRepository.findByTimestampRange(startTime, now);
+        
+        if (snapshots.isEmpty()) {
+            // 如果没有快照数据，返回空趋势
+            return new TrendsResponse(
+                    "最近" + hoursBack + "小时",
+                    startTime.toEpochMilli(),
+                    now.toEpochMilli(),
+                    List.of()
+            );
+        }
+        
+        // 提取时间戳和各项指标数据
+        List<Long> timestamps = snapshots.stream()
+                .map(s -> s.getTimestamp().toEpochMilli())
+                .toList();
+        
+        // 在线节点趋势
+        List<Number> onlineNodeValues = snapshots.stream()
+                .map(MetricsSnapshot::getOnlineNodes)
+                .map(Number.class::cast)
+                .toList();
+        
+        // 离线节点趋势
+        List<Number> offlineNodeValues = snapshots.stream()
+                .map(MetricsSnapshot::getOfflineNodes)
+                .map(Number.class::cast)
+                .toList();
+        
+        // 服务总数趋势
+        List<Number> totalServiceValues = snapshots.stream()
+                .map(MetricsSnapshot::getTotalServices)
+                .map(Number.class::cast)
+                .toList();
+        
+        // 异常服务趋势
+        List<Number> abnormalServiceValues = snapshots.stream()
+                .map(MetricsSnapshot::getAbnormalServices)
+                .map(Number.class::cast)
+                .toList();
+        
+        // 未处理告警趋势
+        List<Number> alertValues = snapshots.stream()
+                .map(MetricsSnapshot::getUnresolvedAlerts)
+                .map(Number.class::cast)
+                .toList();
+        
+        // 获取当前最新值
+        MetricsSnapshot latest = snapshots.get(snapshots.size() - 1);
+        
+        List<TrendData> trends = List.of(
+                new TrendData(
+                        "在线节点",
+                        timestamps,
+                        onlineNodeValues,
+                        "个",
+                        latest.getOnlineNodes()
+                ),
+                new TrendData(
+                        "离线节点",
+                        timestamps,
+                        offlineNodeValues,
+                        "个",
+                        latest.getOfflineNodes()
+                ),
+                new TrendData(
+                        "识别服务",
+                        timestamps,
+                        totalServiceValues,
+                        "个",
+                        latest.getTotalServices()
+                ),
+                new TrendData(
+                        "异常服务",
+                        timestamps,
+                        abnormalServiceValues,
+                        "个",
+                        latest.getAbnormalServices()
+                ),
+                new TrendData(
+                        "未处理告警",
+                        timestamps,
+                        alertValues,
+                        "项",
+                        latest.getUnresolvedAlerts()
+                )
+        );
+        
+        String timeRangeDesc = hoursBack < 1 ? "最近" + (hoursBack * 60) + "分钟" : "最近" + hoursBack + "小时";
+        return new TrendsResponse(timeRangeDesc, startTime.toEpochMilli(), now.toEpochMilli(), trends);
+    }
+
+    private void validateHoursBack(double hoursBack) {
+        if (!Double.isFinite(hoursBack) || hoursBack <= 0 || hoursBack > MAX_TRENDS_QUERY_HOURS) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "hours must be a finite number within (0, " + MAX_TRENDS_QUERY_HOURS + "]"
+            );
+        }
+    }
 }
+
