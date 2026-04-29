@@ -108,11 +108,31 @@ public class NodeRegistryService {
     }
 
     @Transactional(readOnly = true)
-    public List<NodeSummaryResponse> listNodes() {
+    public List<NodeSummaryResponse> listNodes(String status, String keyword, String serviceType, String sortBy) {
         return managedNodeRepository.findAll().stream()
-                .sorted(Comparator.comparing(ManagedNode::getNodeName))
+                // 状态筛选
+                .filter(node -> status == null || status.isBlank() || 
+                        node.getStatus().equalsIgnoreCase(status))
+                // 关键字搜索（节点名或IP）
+                .filter(node -> keyword == null || keyword.isBlank() || 
+                        node.getNodeName().contains(keyword) || 
+                        node.getIpAddress().contains(keyword))
+                // 服务类型筛选
+                .filter(node -> serviceType == null || serviceType.isBlank() || 
+                        node.getServices().stream()
+                                .map(DiscoveredService::getServiceType)
+                                .anyMatch(st -> st.equalsIgnoreCase(serviceType)))
+                // 排序
+                .sorted(getSortComparator(sortBy))
                 .map(this::toNodeSummary)
                 .toList();
+    }
+
+    private Comparator<ManagedNode> getSortComparator(String sortBy) {
+        return switch (sortBy) {
+            case "lastHeartbeat" -> Comparator.comparing(ManagedNode::getLastSeenAt).reversed();
+            default -> Comparator.comparing(ManagedNode::getNodeName);
+        };
     }
 
     @Transactional(readOnly = true)
