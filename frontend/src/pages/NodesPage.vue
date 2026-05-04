@@ -206,6 +206,7 @@ const filters = ref({
 });
 
 let debounceTimer;
+let latestRequestToken = 0;
 
 const hasActiveFilters = computed(() =>
   filters.value.keyword || filters.value.status || filters.value.serviceType || filters.value.sortBy !== "name"
@@ -231,14 +232,22 @@ function debounceLoad() {
 }
 
 async function load() {
+  const requestToken = ++latestRequestToken;
   error.value = "";
   loading.value = true;
   try {
-    nodes.value = await fetchNodes(filters.value);
+    const data = await fetchNodes(filters.value);
+    if (requestToken === latestRequestToken) {
+      nodes.value = data;
+    }
   } catch (err) {
-    error.value = err.message;
+    if (requestToken === latestRequestToken) {
+      error.value = err.message;
+    }
   } finally {
-    loading.value = false;
+    if (requestToken === latestRequestToken) {
+      loading.value = false;
+    }
   }
 }
 
