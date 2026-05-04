@@ -30,8 +30,12 @@ public class PortalController {
     }
 
     @GetMapping("/nodes")
-    public List<NodeSummaryResponse> nodes() {
-        return nodeRegistryService.listNodes();
+    public List<NodeSummaryResponse> nodes(
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String serviceType,
+            @RequestParam(defaultValue = "name") String sortBy) {
+        return nodeRegistryService.listNodes(status, keyword, serviceType, sortBy);
     }
 
     @GetMapping("/nodes/{id}")

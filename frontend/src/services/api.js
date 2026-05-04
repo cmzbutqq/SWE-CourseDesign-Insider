@@ -12,8 +12,16 @@ export function fetchOverview() {
   return fetchJson("/overview");
 }
 
-export function fetchNodes() {
-  return fetchJson("/nodes");
+export function fetchNodes(filters = {}) {
+  const params = new URLSearchParams();
+  
+  if (filters.status) params.append('status', filters.status);
+  if (filters.keyword) params.append('keyword', filters.keyword);
+  if (filters.serviceType) params.append('serviceType', filters.serviceType);
+  if (filters.sortBy) params.append('sortBy', filters.sortBy);
+  
+  const url = params.toString() ? `/nodes?${params.toString()}` : '/nodes';
+  return fetchJson(url);
 }
 
 export function fetchNodeDetail(id) {
