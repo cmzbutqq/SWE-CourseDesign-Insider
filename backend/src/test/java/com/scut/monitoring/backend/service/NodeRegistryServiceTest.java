@@ -3,6 +3,7 @@ package com.scut.monitoring.backend.service;
 import com.scut.monitoring.backend.dto.AgentRegisterRequest;
 import com.scut.monitoring.backend.dto.DiscoveredServicePayload;
 import com.scut.monitoring.backend.dto.HeartbeatRequest;
+import com.scut.monitoring.backend.model.DiscoveredService;
 import com.scut.monitoring.backend.model.HeartbeatEvent;
 import com.scut.monitoring.backend.model.ManagedNode;
 import com.scut.monitoring.backend.model.MetricsSnapshot;
@@ -38,6 +39,7 @@ class NodeRegistryServiceTest {
             discoveredServiceRepository,
             heartbeatEventRepository,
             metricsSnapshotRepository,
+            120,
             "http://localhost:19090",
             "http://localhost:13000",
             "http://localhost:18082"
@@ -115,6 +117,49 @@ class NodeRegistryServiceTest {
     }
 
     @Test
+    void saveMetricsSnapshotShouldDeriveWarningServicesAndAlertsFromNodeState() {
+        ManagedNode onlineNode = createNode("api-node", "ONLINE", Instant.now());
+        ManagedNode offlineNode = createNode("db-node", "OFFLINE", Instant.now().minusSeconds(30));
+        offlineNode.getServices().add(createService(offlineNode, "mysql", "MYSQL"));
+        offlineNode.getServices().add(createService(offlineNode, "redis", "REDIS"));
+
+        when(managedNodeRepository.findAll()).thenReturn(List.of(onlineNode, offlineNode));
+        when(discoveredServiceRepository.count()).thenReturn(3L);
+
+        nodeRegistryService.saveMetricsSnapshot();
+
+        ArgumentCaptor<MetricsSnapshot> snapshotCaptor = ArgumentCaptor.forClass(MetricsSnapshot.class);
+        verify(metricsSnapshotRepository).save(snapshotCaptor.capture());
+        MetricsSnapshot snapshot = snapshotCaptor.getValue();
+
+        assertThat(snapshot.getTotalNodes()).isEqualTo(2);
+        assertThat(snapshot.getOnlineNodes()).isEqualTo(1);
+        assertThat(snapshot.getOfflineNodes()).isEqualTo(1);
+        assertThat(snapshot.getWarningNodes()).isEqualTo(1);
+        assertThat(snapshot.getTotalServices()).isEqualTo(3);
+        assertThat(snapshot.getAbnormalServices()).isEqualTo(2);
+        assertThat(snapshot.getHealthyServices()).isEqualTo(1);
+        assertThat(snapshot.getUnresolvedAlerts()).isEqualTo(3);
+    }
+
+    @Test
+    void markTimedOutNodesOfflineShouldPersistStaleOnlineNodes() {
+        ManagedNode staleOnlineNode = createNode("stale-node", "ONLINE", Instant.now().minusSeconds(300));
+        ManagedNode freshOnlineNode = createNode("fresh-node", "ONLINE", Instant.now());
+        ManagedNode alreadyOfflineNode = createNode("offline-node", "OFFLINE", Instant.now().minusSeconds(300));
+
+        when(managedNodeRepository.findAll()).thenReturn(List.of(staleOnlineNode, freshOnlineNode, alreadyOfflineNode));
+
+        int markedOffline = nodeRegistryService.markTimedOutNodesOffline();
+
+        assertThat(markedOffline).isEqualTo(1);
+        assertThat(staleOnlineNode.getStatus()).isEqualTo("OFFLINE");
+        assertThat(freshOnlineNode.getStatus()).isEqualTo("ONLINE");
+        assertThat(alreadyOfflineNode.getStatus()).isEqualTo("OFFLINE");
+        verify(managedNodeRepository).saveAll(List.of(staleOnlineNode));
+    }
+
+    @Test
     void cleanupOldSnapshotsShouldDelegateDeletionToRepository() {
         Instant cutoff = Instant.parse("2026-01-01T00:00:00Z");
         when(metricsSnapshotRepository.deleteOlderThan(cutoff)).thenReturn(8);
@@ -176,5 +221,28 @@ class NodeRegistryServiceTest {
                 org.mockito.ArgumentMatchers.any(Instant.class)
         );
         verify(metricsSnapshotRepository, never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    private ManagedNode createNode(String nodeName, String status, Instant lastSeenAt) {
+        ManagedNode node = new ManagedNode();
+        node.setNodeName(nodeName);
+        node.setHostname(nodeName + "-host");
+        node.setIpAddress("172.20.0.10");
+        node.setOsName("linux");
+        node.setAgentVersion("0.1.0");
+        node.setStatus(status);
+        node.setLastSeenAt(lastSeenAt);
+        return node;
+    }
+
+    private DiscoveredService createService(ManagedNode node, String serviceName, String serviceType) {
+        DiscoveredService service = new DiscoveredService();
+        service.setNode(node);
+        service.setServiceName(serviceName);
+        service.setServiceType(serviceType);
+        service.setPort(8080);
+        service.setProcessName(serviceName);
+        service.setMetricsPath("/metrics");
+        return service;
     }
 }

@@ -17,6 +17,15 @@ class MetricsCollectionSchedulerTest {
     private final NodeRegistryService nodeRegistryService = mock(NodeRegistryService.class);
 
     @Test
+    void markTimedOutNodesOfflineShouldDelegateToNodeRegistryService() {
+        MetricsCollectionScheduler scheduler = new MetricsCollectionScheduler(nodeRegistryService, 30);
+
+        scheduler.markTimedOutNodesOffline();
+
+        verify(nodeRegistryService).markTimedOutNodesOffline();
+    }
+
+    @Test
     void cleanupOldSnapshotsShouldDeleteSnapshotsOlderThanRetentionWindow() {
         when(nodeRegistryService.cleanupOldSnapshots(org.mockito.ArgumentMatchers.any(Instant.class))).thenReturn(5);
         MetricsCollectionScheduler scheduler = new MetricsCollectionScheduler(nodeRegistryService, 30);

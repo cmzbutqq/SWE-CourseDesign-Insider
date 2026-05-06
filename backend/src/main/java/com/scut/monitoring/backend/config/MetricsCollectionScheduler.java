@@ -40,6 +40,18 @@ public class MetricsCollectionScheduler {
         }
     }
 
+    @Scheduled(cron = "0 */1 * * * *")
+    public void markTimedOutNodesOffline() {
+        try {
+            int timedOutNodes = nodeRegistryService.markTimedOutNodesOffline();
+            if (timedOutNodes > 0) {
+                logger.info("Marked {} timed-out nodes as offline", timedOutNodes);
+            }
+        } catch (Exception e) {
+            logger.error("Error marking timed-out nodes offline", e);
+        }
+    }
+
     @Scheduled(cron = "0 0 2 * * MON")
     public void cleanupOldSnapshots() {
         try {

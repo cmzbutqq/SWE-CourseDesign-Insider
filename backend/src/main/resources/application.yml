@@ -29,6 +29,8 @@ management:
         include: health,info,prometheus
 
 monitoring:
+  nodes:
+    heartbeat-timeout-seconds: ${MONITORING_NODE_HEARTBEAT_TIMEOUT_SECONDS:120}
   prometheus:
     base-url: ${MONITORING_PROMETHEUS_BASE_URL:http://localhost:19090}
   grafana:

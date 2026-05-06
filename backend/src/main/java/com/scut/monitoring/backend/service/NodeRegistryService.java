@@ -34,12 +34,14 @@ import java.util.List;
 @Service
 public class NodeRegistryService {
     private static final double MAX_TRENDS_QUERY_HOURS = 24d * 30d;
-
+    private static final String ONLINE_STATUS = "ONLINE";
+    private static final String OFFLINE_STATUS = "OFFLINE";
 
     private final ManagedNodeRepository managedNodeRepository;
     private final DiscoveredServiceRepository discoveredServiceRepository;
     private final HeartbeatEventRepository heartbeatEventRepository;
     private final MetricsSnapshotRepository metricsSnapshotRepository;
+    private final long heartbeatTimeoutSeconds;
     private final String grafanaBaseUrl;
     private final String skywalkingBaseUrl;
     private final String prometheusBaseUrl;
@@ -49,6 +51,7 @@ public class NodeRegistryService {
             DiscoveredServiceRepository discoveredServiceRepository,
             HeartbeatEventRepository heartbeatEventRepository,
             MetricsSnapshotRepository metricsSnapshotRepository,
+            @Value("${monitoring.nodes.heartbeat-timeout-seconds:120}") long heartbeatTimeoutSeconds,
             @Value("${monitoring.prometheus.base-url:http://localhost:19090}") String prometheusBaseUrl,
             @Value("${monitoring.grafana.base-url:http://localhost:13000}") String grafanaBaseUrl,
             @Value("${monitoring.skywalking.base-url:http://localhost:18082}") String skywalkingBaseUrl
@@ -57,6 +60,7 @@ public class NodeRegistryService {
         this.discoveredServiceRepository = discoveredServiceRepository;
         this.heartbeatEventRepository = heartbeatEventRepository;
         this.metricsSnapshotRepository = metricsSnapshotRepository;
+        this.heartbeatTimeoutSeconds = heartbeatTimeoutSeconds;
         this.prometheusBaseUrl = prometheusBaseUrl;
         this.grafanaBaseUrl = grafanaBaseUrl;
         this.skywalkingBaseUrl = skywalkingBaseUrl;
@@ -72,7 +76,7 @@ public class NodeRegistryService {
         node.setIpAddress(request.ipAddress());
         node.setOsName(request.osName());
         node.setAgentVersion(request.agentVersion());
-        node.setStatus("ONLINE");
+        node.setStatus(ONLINE_STATUS);
         node.setLastSeenAt(Instant.now());
         node.getServices().clear();
 
@@ -111,7 +115,7 @@ public class NodeRegistryService {
     public List<NodeSummaryResponse> listNodes(String status, String keyword, String serviceType, String sortBy) {
         return managedNodeRepository.findAll().stream()
                 // 状态筛选
-                .filter(node -> status == null || status.isBlank() || 
+                .filter(node -> status == null || status.isBlank() ||
                         node.getStatus().equalsIgnoreCase(status))
                 // 关键字搜索（节点名或IP）
                 .filter(node -> keyword == null || keyword.isBlank() || 
@@ -149,15 +153,18 @@ public class NodeRegistryService {
                 .toList();
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public OverviewResponse overview() {
         // 获取所有节点和服务
         List<ManagedNode> allNodes = managedNodeRepository.findAll();
+        markTimedOutNodesOffline(allNodes, Instant.now());
         long totalServices = discoveredServiceRepository.count();
+        long abnormalServices = countServicesOnUnavailableNodes(allNodes, totalServices);
+        long healthyServices = Math.max(0, totalServices - abnormalServices);
         
         // 统计节点状态
         long onlineCount = allNodes.stream()
-                .filter(node -> "ONLINE".equalsIgnoreCase(node.getStatus()))
+                .filter(this::isOnline)
                 .count();
         long offlineCount = allNodes.size() - onlineCount;
         
@@ -166,19 +173,19 @@ public class NodeRegistryService {
                 allNodes.size(),      // total
                 onlineCount,          // online
                 offlineCount,         // offline
-                0,                    // warning（暂时为0，需要实现详细指标）
+                offlineCount,         // warning
                 0,                    // healthy（不用）
                 0                     // abnormal（不用）
         );
         
-        // 构建服务统计（简化版：暂时全部标记为 healthy）
+        // 构建服务统计
         CounterGroupDTO servicesCounter = new CounterGroupDTO(
                 totalServices,        // total
                 0,                    // online（不用）
                 0,                    // offline（不用）
                 0,                    // warning（不用）
-                totalServices,        // healthy（暂时等于总数）
-                0                     // abnormal（0表示无异常服务）
+                healthyServices,      // healthy
+                abnormalServices      // abnormal
         );
         
         // 收集异常节点和服务
@@ -194,7 +201,7 @@ public class NodeRegistryService {
         return new OverviewResponse(
                 nodesCounter,
                 servicesCounter,
-                0L,                   // unresolvedAlerts（暂时为0）
+                offlineCount + abnormalServices,
                 anomalies,
                 quickLinks
         );
@@ -206,7 +213,7 @@ public class NodeRegistryService {
     private AnomaliesDTO buildAnomalies(List<ManagedNode> allNodes) {
         // 异常节点：筛选离线或在线时间很久未更新的节点
         List<AnomalyNodeDTO> anomalyNodes = allNodes.stream()
-                .filter(node -> !"ONLINE".equalsIgnoreCase(node.getStatus()))
+                .filter(node -> !isOnline(node))
                 .map(node -> new AnomalyNodeDTO(
                         node.getId(),
                         node.getNodeName(),
@@ -220,8 +227,19 @@ public class NodeRegistryService {
                 .sorted(Comparator.comparingLong(AnomalyNodeDTO::durationSeconds).reversed())
                 .toList();
         
-        // 异常服务：暂时为空列表（等待后端实现服务健康检查）
-        List<AnomalyServiceDTO> anomalyServices = List.of();
+        List<AnomalyServiceDTO> anomalyServices = allNodes.stream()
+                .filter(node -> !isOnline(node))
+                .flatMap(node -> node.getServices().stream()
+                        .map(service -> new AnomalyServiceDTO(
+                                service.getId(),
+                                service.getServiceName(),
+                                OFFLINE_STATUS,
+                                "UNAVAILABLE",
+                                node.getNodeName()
+                        )))
+                .sorted(Comparator.comparing(AnomalyServiceDTO::nodeName)
+                        .thenComparing(AnomalyServiceDTO::serviceName))
+                .toList();
         
         return new AnomaliesDTO(anomalyNodes, anomalyServices);
     }
@@ -284,18 +302,18 @@ public class NodeRegistryService {
     @Transactional
     public void saveMetricsSnapshot() {
         List<ManagedNode> allNodes = managedNodeRepository.findAll();
+        markTimedOutNodesOffline(allNodes, Instant.now());
         long totalServices = discoveredServiceRepository.count();
         
         long onlineCount = allNodes.stream()
-                .filter(node -> "ONLINE".equalsIgnoreCase(node.getStatus()))
+                .filter(this::isOnline)
                 .count();
         long offlineCount = allNodes.size() - onlineCount;
-        
-        // 生成一些变化的异常数据用于演示
-        long warningNodes = Math.max(0, (long)(Math.random() * 2)); // 0-1个警告节点
-        long abnormalServices = Math.min(totalServices, Math.max(0, (long) (Math.random() * 3))); // 0-2个异常服务，且不会超过总数
+
+        long warningNodes = offlineCount;
+        long abnormalServices = countServicesOnUnavailableNodes(allNodes, totalServices);
         long healthyServices = Math.max(0, totalServices - abnormalServices);
-        long unresolvedAlerts = abnormalServices + warningNodes; // 未解决告警数
+        long unresolvedAlerts = abnormalServices + warningNodes;
         
         MetricsSnapshot snapshot = new MetricsSnapshot(
                 Instant.now(),
@@ -310,6 +328,38 @@ public class NodeRegistryService {
         );
         
         metricsSnapshotRepository.save(snapshot);
+    }
+
+    @Transactional
+    public int markTimedOutNodesOffline() {
+        return markTimedOutNodesOffline(managedNodeRepository.findAll(), Instant.now());
+    }
+
+    private int markTimedOutNodesOffline(List<ManagedNode> allNodes, Instant now) {
+        Instant cutoff = now.minusSeconds(heartbeatTimeoutSeconds);
+        List<ManagedNode> timedOutNodes = allNodes.stream()
+                .filter(this::isOnline)
+                .filter(node -> node.getLastSeenAt() != null && node.getLastSeenAt().isBefore(cutoff))
+                .peek(node -> node.setStatus(OFFLINE_STATUS))
+                .toList();
+
+        if (!timedOutNodes.isEmpty()) {
+            managedNodeRepository.saveAll(timedOutNodes);
+        }
+
+        return timedOutNodes.size();
+    }
+
+    private boolean isOnline(ManagedNode node) {
+        return ONLINE_STATUS.equalsIgnoreCase(node.getStatus());
+    }
+
+    private long countServicesOnUnavailableNodes(List<ManagedNode> allNodes, long totalServices) {
+        long unavailableServices = allNodes.stream()
+                .filter(node -> !isOnline(node))
+                .mapToLong(node -> node.getServices().size())
+                .sum();
+        return Math.min(totalServices, unavailableServices);
     }
 
     @Transactional
@@ -429,4 +479,3 @@ public class NodeRegistryService {
         }
     }
 }
-
