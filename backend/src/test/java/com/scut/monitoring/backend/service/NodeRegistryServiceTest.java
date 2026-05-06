@@ -98,9 +98,13 @@ class NodeRegistryServiceTest {
     }
 
     @Test
-    void saveMetricsSnapshotShouldNeverPersistNegativeHealthyServices() {
-        when(managedNodeRepository.findAll()).thenReturn(List.of());
-        when(discoveredServiceRepository.count()).thenReturn(0L);
+    void saveMetricsSnapshotShouldUseDeterministicDerivedMetrics() {
+        ManagedNode onlineNode = new ManagedNode();
+        onlineNode.setStatus("ONLINE");
+        ManagedNode offlineNode = new ManagedNode();
+        offlineNode.setStatus("OFFLINE");
+        when(managedNodeRepository.findAll()).thenReturn(List.of(onlineNode, offlineNode));
+        when(discoveredServiceRepository.count()).thenReturn(5L);
 
         nodeRegistryService.saveMetricsSnapshot();
 
@@ -108,10 +112,14 @@ class NodeRegistryServiceTest {
         verify(metricsSnapshotRepository).save(snapshotCaptor.capture());
         MetricsSnapshot snapshot = snapshotCaptor.getValue();
 
-        assertThat(snapshot.getTotalServices()).isZero();
-        assertThat(snapshot.getAbnormalServices()).isGreaterThanOrEqualTo(0);
-        assertThat(snapshot.getHealthyServices()).isGreaterThanOrEqualTo(0);
-        assertThat(snapshot.getHealthyServices()).isLessThanOrEqualTo(snapshot.getTotalServices());
+        assertThat(snapshot.getTotalNodes()).isEqualTo(2);
+        assertThat(snapshot.getOnlineNodes()).isEqualTo(1);
+        assertThat(snapshot.getOfflineNodes()).isEqualTo(1);
+        assertThat(snapshot.getWarningNodes()).isEqualTo(1);
+        assertThat(snapshot.getTotalServices()).isEqualTo(5);
+        assertThat(snapshot.getAbnormalServices()).isZero();
+        assertThat(snapshot.getHealthyServices()).isEqualTo(5);
+        assertThat(snapshot.getUnresolvedAlerts()).isEqualTo(1);
     }
 
     @Test

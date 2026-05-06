@@ -291,11 +291,11 @@ public class NodeRegistryService {
                 .count();
         long offlineCount = allNodes.size() - onlineCount;
         
-        // 生成一些变化的异常数据用于演示
-        long warningNodes = Math.max(0, (long)(Math.random() * 2)); // 0-1个警告节点
-        long abnormalServices = Math.min(totalServices, Math.max(0, (long) (Math.random() * 3))); // 0-2个异常服务，且不会超过总数
-        long healthyServices = Math.max(0, totalServices - abnormalServices);
-        long unresolvedAlerts = abnormalServices + warningNodes; // 未解决告警数
+        // 快照数据应与当前实际状态一致，避免使用随机数造成趋势图抖动和误报
+        long warningNodes = offlineCount;
+        long abnormalServices = 0L;
+        long healthyServices = totalServices;
+        long unresolvedAlerts = warningNodes;
         
         MetricsSnapshot snapshot = new MetricsSnapshot(
                 Instant.now(),
@@ -429,4 +429,3 @@ public class NodeRegistryService {
         }
     }
 }
-
