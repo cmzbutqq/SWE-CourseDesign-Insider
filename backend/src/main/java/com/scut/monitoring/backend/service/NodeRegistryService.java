@@ -30,10 +30,12 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 
 @Service
 public class NodeRegistryService {
     private static final double MAX_TRENDS_QUERY_HOURS = 24d * 30d;
+    private static final Set<String> ALLOWED_HEARTBEAT_STATUSES = Set.of("ONLINE", "OFFLINE", "WARNING");
 
 
     private final ManagedNodeRepository managedNodeRepository;
@@ -93,14 +95,19 @@ public class NodeRegistryService {
 
     @Transactional
     public NodeSummaryResponse heartbeat(HeartbeatRequest request) {
+        String normalizedStatus = request.status().toUpperCase();
+        if (!ALLOWED_HEARTBEAT_STATUSES.contains(normalizedStatus)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported status value");
+        }
+
         ManagedNode node = managedNodeRepository.findByNodeName(request.nodeName())
                 .orElseThrow(() -> new EntityNotFoundException("Node not registered: " + request.nodeName()));
 
-        node.setStatus(request.status());
+        node.setStatus(normalizedStatus);
         node.setLastSeenAt(Instant.now());
         HeartbeatEvent event = new HeartbeatEvent();
         event.setNode(node);
-        event.setStatus(request.status());
+        event.setStatus(normalizedStatus);
         event.setCreatedAt(Instant.now());
         heartbeatEventRepository.save(event);
 

@@ -97,6 +97,23 @@ class NodeRegistryServiceTest {
         assertThat(response.status()).isEqualTo("ONLINE");
     }
 
+
+    @Test
+    void heartbeatShouldRejectUnsupportedStatusAsBadRequest() {
+        ManagedNode node = new ManagedNode();
+        node.setNodeName("middleware-node");
+        when(managedNodeRepository.findByNodeName("middleware-node")).thenReturn(Optional.of(node));
+
+        ResponseStatusException exception = org.assertj.core.api.Assertions.catchThrowableOfType(
+                () -> nodeRegistryService.heartbeat(new HeartbeatRequest("middleware-node", "DEGRADED")),
+                ResponseStatusException.class
+        );
+
+        assertThat(exception).isNotNull();
+        assertThat(exception.getStatusCode().value()).isEqualTo(400);
+        verify(heartbeatEventRepository, never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
     @Test
     void saveMetricsSnapshotShouldNeverPersistNegativeHealthyServices() {
         when(managedNodeRepository.findAll()).thenReturn(List.of());
