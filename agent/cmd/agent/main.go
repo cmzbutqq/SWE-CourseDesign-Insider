@@ -7,6 +7,7 @@ import (
 	"scut-monitoring/agent/internal/config"
 	"scut-monitoring/agent/internal/discovery"
 	"scut-monitoring/agent/internal/httpclient"
+	"scut-monitoring/agent/internal/metrics"
 	"scut-monitoring/agent/internal/system"
 	"scut-monitoring/agent/internal/types"
 )
@@ -43,11 +44,9 @@ func main() {
 	}
 
 	heartbeat := func() {
-		payload := types.HeartbeatPayload{
-			NodeName: cfg.NodeName,
-			Status:   "ONLINE",
-		}
-		if err := client.Post("/agents/heartbeat", payload); err != nil {
+		m := metrics.Collect()
+		m.NodeName = cfg.NodeName
+		if err := client.Post("/agents/heartbeat", m); err != nil {
 			log.Printf("heartbeat failed: %v", err)
 		}
 	}

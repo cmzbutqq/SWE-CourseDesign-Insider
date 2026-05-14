@@ -6,9 +6,11 @@ import com.scut.monitoring.backend.dto.AnomalyNodeDTO;
 import com.scut.monitoring.backend.dto.AnomalyServiceDTO;
 import com.scut.monitoring.backend.dto.CounterGroupDTO;
 import com.scut.monitoring.backend.dto.HeartbeatRequest;
+import com.scut.monitoring.backend.dto.HostMetricsDTO;
 import com.scut.monitoring.backend.dto.NodeDetailResponse;
 import com.scut.monitoring.backend.dto.NodeSummaryResponse;
 import com.scut.monitoring.backend.dto.OverviewResponse;
+import com.scut.monitoring.backend.dto.QuickLinkDTO;
 import com.scut.monitoring.backend.dto.ServiceSummaryResponse;
 import com.scut.monitoring.backend.dto.TrendData;
 import com.scut.monitoring.backend.dto.TrendsResponse;
@@ -16,10 +18,12 @@ import com.scut.monitoring.backend.model.DiscoveredService;
 import com.scut.monitoring.backend.model.HeartbeatEvent;
 import com.scut.monitoring.backend.model.ManagedNode;
 import com.scut.monitoring.backend.model.MetricsSnapshot;
+import com.scut.monitoring.backend.model.NodeMetrics;
 import com.scut.monitoring.backend.repository.DiscoveredServiceRepository;
 import com.scut.monitoring.backend.repository.HeartbeatEventRepository;
 import com.scut.monitoring.backend.repository.ManagedNodeRepository;
 import com.scut.monitoring.backend.repository.MetricsSnapshotRepository;
+import com.scut.monitoring.backend.repository.NodeMetricsRepository;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -34,12 +38,13 @@ import java.util.List;
 @Service
 public class NodeRegistryService {
     private static final double MAX_TRENDS_QUERY_HOURS = 24d * 30d;
-
+    private static final long HEARTBEAT_TIMEOUT_THRESHOLD_SECONDS = 90;
 
     private final ManagedNodeRepository managedNodeRepository;
     private final DiscoveredServiceRepository discoveredServiceRepository;
     private final HeartbeatEventRepository heartbeatEventRepository;
     private final MetricsSnapshotRepository metricsSnapshotRepository;
+    private final NodeMetricsRepository nodeMetricsRepository;
     private final String grafanaBaseUrl;
     private final String skywalkingBaseUrl;
     private final String prometheusBaseUrl;
@@ -49,6 +54,7 @@ public class NodeRegistryService {
             DiscoveredServiceRepository discoveredServiceRepository,
             HeartbeatEventRepository heartbeatEventRepository,
             MetricsSnapshotRepository metricsSnapshotRepository,
+            NodeMetricsRepository nodeMetricsRepository,
             @Value("${monitoring.prometheus.base-url:http://localhost:19090}") String prometheusBaseUrl,
             @Value("${monitoring.grafana.base-url:http://localhost:13000}") String grafanaBaseUrl,
             @Value("${monitoring.skywalking.base-url:http://localhost:18082}") String skywalkingBaseUrl
@@ -57,6 +63,7 @@ public class NodeRegistryService {
         this.discoveredServiceRepository = discoveredServiceRepository;
         this.heartbeatEventRepository = heartbeatEventRepository;
         this.metricsSnapshotRepository = metricsSnapshotRepository;
+        this.nodeMetricsRepository = nodeMetricsRepository;
         this.prometheusBaseUrl = prometheusBaseUrl;
         this.grafanaBaseUrl = grafanaBaseUrl;
         this.skywalkingBaseUrl = skywalkingBaseUrl;
@@ -104,25 +111,44 @@ public class NodeRegistryService {
         event.setCreatedAt(Instant.now());
         heartbeatEventRepository.save(event);
 
+        if (hasMetricsData(request)) {
+            NodeMetrics metrics = new NodeMetrics();
+            metrics.setNode(node);
+            metrics.setCollectedAt(Instant.now());
+            metrics.setCpuUsage(request.cpuUsage());
+            metrics.setMemoryUsage(request.memoryUsage());
+            metrics.setMemoryTotalMb(request.memoryTotalMb());
+            metrics.setMemoryUsedMb(request.memoryUsedMb());
+            metrics.setDiskUsage(request.diskUsage());
+            metrics.setDiskTotalGb(request.diskTotalGb());
+            metrics.setDiskUsedGb(request.diskUsedGb());
+            metrics.setNetworkRxMbps(request.networkRxMbps());
+            metrics.setNetworkTxMbps(request.networkTxMbps());
+            nodeMetricsRepository.save(metrics);
+        }
+
         return toNodeSummary(node);
+    }
+
+    private boolean hasMetricsData(HeartbeatRequest request) {
+        return request.cpuUsage() != null
+                || request.memoryUsage() != null
+                || request.diskUsage() != null
+                || request.networkRxMbps() != null;
     }
 
     @Transactional(readOnly = true)
     public List<NodeSummaryResponse> listNodes(String status, String keyword, String serviceType, String sortBy) {
         return managedNodeRepository.findAll().stream()
-                // 状态筛选
-                .filter(node -> status == null || status.isBlank() || 
+                .filter(node -> status == null || status.isBlank() ||
                         node.getStatus().equalsIgnoreCase(status))
-                // 关键字搜索（节点名或IP）
-                .filter(node -> keyword == null || keyword.isBlank() || 
-                        node.getNodeName().contains(keyword) || 
+                .filter(node -> keyword == null || keyword.isBlank() ||
+                        node.getNodeName().contains(keyword) ||
                         node.getIpAddress().contains(keyword))
-                // 服务类型筛选
-                .filter(node -> serviceType == null || serviceType.isBlank() || 
+                .filter(node -> serviceType == null || serviceType.isBlank() ||
                         node.getServices().stream()
                                 .map(DiscoveredService::getServiceType)
                                 .anyMatch(st -> st.equalsIgnoreCase(serviceType)))
-                // 排序
                 .sorted(getSortComparator(sortBy))
                 .map(this::toNodeSummary)
                 .toList();
@@ -151,60 +177,50 @@ public class NodeRegistryService {
 
     @Transactional(readOnly = true)
     public OverviewResponse overview() {
-        // 获取所有节点和服务
         List<ManagedNode> allNodes = managedNodeRepository.findAll();
         long totalServices = discoveredServiceRepository.count();
-        
-        // 统计节点状态
+
         long onlineCount = allNodes.stream()
                 .filter(node -> "ONLINE".equalsIgnoreCase(node.getStatus()))
                 .count();
         long offlineCount = allNodes.size() - onlineCount;
-        
-        // 构建节点统计
+
         CounterGroupDTO nodesCounter = new CounterGroupDTO(
-                allNodes.size(),      // total
-                onlineCount,          // online
-                offlineCount,         // offline
-                0,                    // warning（暂时为0，需要实现详细指标）
-                0,                    // healthy（不用）
-                0                     // abnormal（不用）
+                allNodes.size(),
+                onlineCount,
+                offlineCount,
+                0,
+                0,
+                0
         );
-        
-        // 构建服务统计（简化版：暂时全部标记为 healthy）
+
         CounterGroupDTO servicesCounter = new CounterGroupDTO(
-                totalServices,        // total
-                0,                    // online（不用）
-                0,                    // offline（不用）
-                0,                    // warning（不用）
-                totalServices,        // healthy（暂时等于总数）
-                0                     // abnormal（0表示无异常服务）
+                totalServices,
+                0,
+                0,
+                0,
+                totalServices,
+                0
         );
-        
-        // 收集异常节点和服务
+
         AnomaliesDTO anomalies = buildAnomalies(allNodes);
-        
-        // 快捷链接
+
         List<String> quickLinks = List.of(
                 "Prometheus: " + prometheusBaseUrl,
                 "Grafana: " + grafanaBaseUrl,
                 "SkyWalking: " + skywalkingBaseUrl
         );
-        
+
         return new OverviewResponse(
                 nodesCounter,
                 servicesCounter,
-                0L,                   // unresolvedAlerts（暂时为0）
+                0L,
                 anomalies,
                 quickLinks
         );
     }
 
-    /**
-     * 构建异常数据：离线节点和异常服务
-     */
     private AnomaliesDTO buildAnomalies(List<ManagedNode> allNodes) {
-        // 异常节点：筛选离线或在线时间很久未更新的节点
         List<AnomalyNodeDTO> anomalyNodes = allNodes.stream()
                 .filter(node -> !"ONLINE".equalsIgnoreCase(node.getStatus()))
                 .map(node -> new AnomalyNodeDTO(
@@ -213,22 +229,18 @@ public class NodeRegistryService {
                         node.getStatus(),
                         "OFFLINE",
                         node.getLastSeenAt(),
-                        null,  // cpuUsage
-                        null,  // memoryUsage
+                        null,
+                        null,
                         calculateDurationSeconds(node.getLastSeenAt())
                 ))
                 .sorted(Comparator.comparingLong(AnomalyNodeDTO::durationSeconds).reversed())
                 .toList();
-        
-        // 异常服务：暂时为空列表（等待后端实现服务健康检查）
+
         List<AnomalyServiceDTO> anomalyServices = List.of();
-        
+
         return new AnomaliesDTO(anomalyNodes, anomalyServices);
     }
 
-    /**
-     * 计算从指定时间到现在的秒数
-     */
     private Long calculateDurationSeconds(Instant lastSeen) {
         if (lastSeen == null) return 0L;
         return Math.max(0, Instant.now().getEpochSecond() - lastSeen.getEpochSecond());
@@ -249,6 +261,12 @@ public class NodeRegistryService {
     }
 
     private NodeDetailResponse toNodeDetail(ManagedNode node) {
+        String statusSummary = buildStatusSummary(node);
+        boolean heartbeatTimeoutRisk = isHeartbeatTimeoutRisk(node);
+        HostMetricsDTO hostMetrics = buildHostMetrics(node);
+        List<ServiceSummaryResponse> highRiskServices = buildHighRiskServices(node);
+        List<QuickLinkDTO> quickLinks = buildQuickLinks(node);
+
         return new NodeDetailResponse(
                 node.getId(),
                 node.getNodeName(),
@@ -261,7 +279,68 @@ public class NodeRegistryService {
                 node.getServices().stream()
                         .sorted(Comparator.comparing(DiscoveredService::getServiceType).thenComparing(DiscoveredService::getServiceName))
                         .map(this::toServiceSummary)
-                        .toList()
+                        .toList(),
+                statusSummary,
+                node.getLastSeenAt(),
+                heartbeatTimeoutRisk,
+                hostMetrics,
+                highRiskServices,
+                quickLinks
+        );
+    }
+
+    private String buildStatusSummary(ManagedNode node) {
+        if (!"ONLINE".equalsIgnoreCase(node.getStatus())) {
+            return "节点离线";
+        }
+        long secondsSinceLastSeen = calculateDurationSeconds(node.getLastSeenAt());
+        if (secondsSinceLastSeen > HEARTBEAT_TIMEOUT_THRESHOLD_SECONDS) {
+            return "心跳超时，可能失联";
+        }
+        if (secondsSinceLastSeen > HEARTBEAT_TIMEOUT_THRESHOLD_SECONDS / 2) {
+            return "心跳延迟，存在超时风险";
+        }
+        return "节点正常运行";
+    }
+
+    private boolean isHeartbeatTimeoutRisk(ManagedNode node) {
+        if (!"ONLINE".equalsIgnoreCase(node.getStatus())) {
+            return false;
+        }
+        long secondsSinceLastSeen = calculateDurationSeconds(node.getLastSeenAt());
+        return secondsSinceLastSeen > HEARTBEAT_TIMEOUT_THRESHOLD_SECONDS / 2;
+    }
+
+    private HostMetricsDTO buildHostMetrics(ManagedNode node) {
+        return nodeMetricsRepository.findTopByNodeOrderByCollectedAtDesc(node)
+                .map(m -> new HostMetricsDTO(
+                        m.getCpuUsage(),
+                        m.getMemoryUsage(),
+                        m.getMemoryTotalMb(),
+                        m.getMemoryUsedMb(),
+                        m.getDiskUsage(),
+                        m.getDiskTotalGb(),
+                        m.getDiskUsedGb(),
+                        m.getNetworkRxMbps(),
+                        m.getNetworkTxMbps()
+                ))
+                .orElse(null);
+    }
+
+    private List<ServiceSummaryResponse> buildHighRiskServices(ManagedNode node) {
+        return node.getServices().stream()
+                .filter(s -> s.getMetricsPath() == null || s.getMetricsPath().isBlank())
+                .sorted(Comparator.comparing(DiscoveredService::getServiceName))
+                .map(this::toServiceSummary)
+                .toList();
+    }
+
+    private List<QuickLinkDTO> buildQuickLinks(ManagedNode node) {
+        String instanceFilter = node.getIpAddress();
+        return List.of(
+                new QuickLinkDTO("Grafana", grafanaBaseUrl + "/d/host-metrics?var-instance=" + instanceFilter),
+                new QuickLinkDTO("Prometheus", prometheusBaseUrl + "/graph?g0.expr=instance%3D%22" + instanceFilter + "%22"),
+                new QuickLinkDTO("SkyWalking", skywalkingBaseUrl + "/general-service")
         );
     }
 
@@ -277,38 +356,33 @@ public class NodeRegistryService {
         );
     }
 
-    /**
-     * 保存当前的指标快照（用于趋势分析）
-     * 通常由定时任务调用，每5分钟调用一次
-     */
     @Transactional
     public void saveMetricsSnapshot() {
         List<ManagedNode> allNodes = managedNodeRepository.findAll();
         long totalServices = discoveredServiceRepository.count();
-        
+
         long onlineCount = allNodes.stream()
                 .filter(node -> "ONLINE".equalsIgnoreCase(node.getStatus()))
                 .count();
         long offlineCount = allNodes.size() - onlineCount;
-        
-        // 生成一些变化的异常数据用于演示
-        long warningNodes = Math.max(0, (long)(Math.random() * 2)); // 0-1个警告节点
-        long abnormalServices = Math.min(totalServices, Math.max(0, (long) (Math.random() * 3))); // 0-2个异常服务，且不会超过总数
+
+        long warningNodes = Math.max(0, (long)(Math.random() * 2));
+        long abnormalServices = Math.min(totalServices, Math.max(0, (long) (Math.random() * 3)));
         long healthyServices = Math.max(0, totalServices - abnormalServices);
-        long unresolvedAlerts = abnormalServices + warningNodes; // 未解决告警数
-        
+        long unresolvedAlerts = abnormalServices + warningNodes;
+
         MetricsSnapshot snapshot = new MetricsSnapshot(
                 Instant.now(),
-                allNodes.size(),      // totalNodes
-                onlineCount,          // onlineNodes
-                offlineCount,         // offlineNodes
-                warningNodes,         // warningNodes
-                totalServices,        // totalServices
-                healthyServices,      // healthyServices
-                abnormalServices,     // abnormalServices
-                unresolvedAlerts      // unresolvedAlerts
+                allNodes.size(),
+                onlineCount,
+                offlineCount,
+                warningNodes,
+                totalServices,
+                healthyServices,
+                abnormalServices,
+                unresolvedAlerts
         );
-        
+
         metricsSnapshotRepository.save(snapshot);
     }
 
@@ -317,21 +391,16 @@ public class NodeRegistryService {
         return metricsSnapshotRepository.deleteOlderThan(cutoffTime);
     }
 
-    /**
-     * 获取趋势数据
-     * @param hoursBack 往前查询多少小时的数据（支持小数如 0.25, 0.5 等）
-     */
     @Transactional(readOnly = true)
     public TrendsResponse getTrends(double hoursBack) {
         validateHoursBack(hoursBack);
 
         Instant now = Instant.now();
         Instant startTime = now.minusSeconds((long) (hoursBack * 3600));
-        
+
         List<MetricsSnapshot> snapshots = metricsSnapshotRepository.findByTimestampRange(startTime, now);
-        
+
         if (snapshots.isEmpty()) {
-            // 如果没有快照数据，返回空趋势
             return new TrendsResponse(
                     "最近" + hoursBack + "小时",
                     startTime.toEpochMilli(),
@@ -339,83 +408,46 @@ public class NodeRegistryService {
                     List.of()
             );
         }
-        
-        // 提取时间戳和各项指标数据
+
         List<Long> timestamps = snapshots.stream()
                 .map(s -> s.getTimestamp().toEpochMilli())
                 .toList();
-        
-        // 在线节点趋势
+
         List<Number> onlineNodeValues = snapshots.stream()
                 .map(MetricsSnapshot::getOnlineNodes)
                 .map(Number.class::cast)
                 .toList();
-        
-        // 离线节点趋势
+
         List<Number> offlineNodeValues = snapshots.stream()
                 .map(MetricsSnapshot::getOfflineNodes)
                 .map(Number.class::cast)
                 .toList();
-        
-        // 服务总数趋势
+
         List<Number> totalServiceValues = snapshots.stream()
                 .map(MetricsSnapshot::getTotalServices)
                 .map(Number.class::cast)
                 .toList();
-        
-        // 异常服务趋势
+
         List<Number> abnormalServiceValues = snapshots.stream()
                 .map(MetricsSnapshot::getAbnormalServices)
                 .map(Number.class::cast)
                 .toList();
-        
-        // 未处理告警趋势
+
         List<Number> alertValues = snapshots.stream()
                 .map(MetricsSnapshot::getUnresolvedAlerts)
                 .map(Number.class::cast)
                 .toList();
-        
-        // 获取当前最新值
+
         MetricsSnapshot latest = snapshots.get(snapshots.size() - 1);
-        
+
         List<TrendData> trends = List.of(
-                new TrendData(
-                        "在线节点",
-                        timestamps,
-                        onlineNodeValues,
-                        "个",
-                        latest.getOnlineNodes()
-                ),
-                new TrendData(
-                        "离线节点",
-                        timestamps,
-                        offlineNodeValues,
-                        "个",
-                        latest.getOfflineNodes()
-                ),
-                new TrendData(
-                        "识别服务",
-                        timestamps,
-                        totalServiceValues,
-                        "个",
-                        latest.getTotalServices()
-                ),
-                new TrendData(
-                        "异常服务",
-                        timestamps,
-                        abnormalServiceValues,
-                        "个",
-                        latest.getAbnormalServices()
-                ),
-                new TrendData(
-                        "未处理告警",
-                        timestamps,
-                        alertValues,
-                        "项",
-                        latest.getUnresolvedAlerts()
-                )
+                new TrendData("在线节点", timestamps, onlineNodeValues, "个", latest.getOnlineNodes()),
+                new TrendData("离线节点", timestamps, offlineNodeValues, "个", latest.getOfflineNodes()),
+                new TrendData("识别服务", timestamps, totalServiceValues, "个", latest.getTotalServices()),
+                new TrendData("异常服务", timestamps, abnormalServiceValues, "个", latest.getAbnormalServices()),
+                new TrendData("未处理告警", timestamps, alertValues, "项", latest.getUnresolvedAlerts())
         );
-        
+
         String timeRangeDesc = hoursBack < 1 ? "最近" + (hoursBack * 60) + "分钟" : "最近" + hoursBack + "小时";
         return new TrendsResponse(timeRangeDesc, startTime.toEpochMilli(), now.toEpochMilli(), trends);
     }
@@ -429,4 +461,3 @@ public class NodeRegistryService {
         }
     }
 }
-

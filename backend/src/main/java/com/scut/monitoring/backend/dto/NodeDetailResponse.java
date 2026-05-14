@@ -12,6 +12,12 @@ public record NodeDetailResponse(
         String agentVersion,
         String status,
         Instant lastSeenAt,
-        List<ServiceSummaryResponse> services
+        List<ServiceSummaryResponse> services,
+        String statusSummary,
+        Instant lastHeartbeatAt,
+        boolean heartbeatTimeoutRisk,
+        HostMetricsDTO hostMetrics,
+        List<ServiceSummaryResponse> highRiskServices,
+        List<QuickLinkDTO> quickLinks
 ) {
 }

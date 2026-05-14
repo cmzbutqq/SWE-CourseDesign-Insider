@@ -10,6 +10,8 @@ import com.scut.monitoring.backend.repository.DiscoveredServiceRepository;
 import com.scut.monitoring.backend.repository.HeartbeatEventRepository;
 import com.scut.monitoring.backend.repository.ManagedNodeRepository;
 import com.scut.monitoring.backend.repository.MetricsSnapshotRepository;
+import com.scut.monitoring.backend.repository.NodeMetricsRepository;
+
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.web.server.ResponseStatusException;
@@ -32,12 +34,14 @@ class NodeRegistryServiceTest {
     private final DiscoveredServiceRepository discoveredServiceRepository = mock(DiscoveredServiceRepository.class);
     private final HeartbeatEventRepository heartbeatEventRepository = mock(HeartbeatEventRepository.class);
     private final MetricsSnapshotRepository metricsSnapshotRepository = mock(MetricsSnapshotRepository.class);
+    private final NodeMetricsRepository nodeMetricsRepository = mock(NodeMetricsRepository.class);
 
     private final NodeRegistryService nodeRegistryService = new NodeRegistryService(
             managedNodeRepository,
             discoveredServiceRepository,
             heartbeatEventRepository,
             metricsSnapshotRepository,
+            nodeMetricsRepository,
             "http://localhost:19090",
             "http://localhost:13000",
             "http://localhost:18082"
@@ -87,7 +91,7 @@ class NodeRegistryServiceTest {
 
         when(managedNodeRepository.findByNodeName("middleware-node")).thenReturn(Optional.of(node));
 
-        var response = nodeRegistryService.heartbeat(new HeartbeatRequest("middleware-node", "ONLINE"));
+        var response = nodeRegistryService.heartbeat(new HeartbeatRequest("middleware-node", "ONLINE", null, null, null, null, null, null, null, null, null));
 
         ArgumentCaptor<HeartbeatEvent> captor = ArgumentCaptor.forClass(HeartbeatEvent.class);
         verify(heartbeatEventRepository).save(captor.capture());
