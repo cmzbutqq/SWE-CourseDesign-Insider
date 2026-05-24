@@ -116,6 +116,7 @@ public class NodeRegistryService {
         Instant now = Instant.now();
         node.setStatus(normalizedStatus);
         node.setLastSeenAt(now);
+        node.setLastHeartbeatAt(now);
         HeartbeatEvent event = new HeartbeatEvent();
         event.setNode(node);
         event.setStatus(normalizedStatus);
@@ -133,18 +134,19 @@ public class NodeRegistryService {
         Double networkTxMbps = normalizeNetworkMbps(request.networkTxMbps());
 
         if (hasMetricsData(cpuUsage, memoryUsage, memoryTotalMb, memoryUsedMb, diskUsage, diskTotalGb, diskUsedGb, networkRxMbps, networkTxMbps)) {
+            NodeMetrics previousMetrics = nodeMetricsRepository.findTopByNodeOrderByCollectedAtDesc(node).orElse(null);
             NodeMetrics metrics = new NodeMetrics();
             metrics.setNode(node);
             metrics.setCollectedAt(now);
-            metrics.setCpuUsage(cpuUsage);
-            metrics.setMemoryUsage(memoryUsage);
-            metrics.setMemoryTotalMb(memoryTotalMb);
-            metrics.setMemoryUsedMb(memoryUsedMb);
-            metrics.setDiskUsage(diskUsage);
-            metrics.setDiskTotalGb(diskTotalGb);
-            metrics.setDiskUsedGb(diskUsedGb);
-            metrics.setNetworkRxMbps(networkRxMbps);
-            metrics.setNetworkTxMbps(networkTxMbps);
+            metrics.setCpuUsage(coalesceMetric(cpuUsage, previousMetrics == null ? null : previousMetrics.getCpuUsage()));
+            metrics.setMemoryUsage(coalesceMetric(memoryUsage, previousMetrics == null ? null : previousMetrics.getMemoryUsage()));
+            metrics.setMemoryTotalMb(coalesceMetric(memoryTotalMb, previousMetrics == null ? null : previousMetrics.getMemoryTotalMb()));
+            metrics.setMemoryUsedMb(coalesceMetric(memoryUsedMb, previousMetrics == null ? null : previousMetrics.getMemoryUsedMb()));
+            metrics.setDiskUsage(coalesceMetric(diskUsage, previousMetrics == null ? null : previousMetrics.getDiskUsage()));
+            metrics.setDiskTotalGb(coalesceMetric(diskTotalGb, previousMetrics == null ? null : previousMetrics.getDiskTotalGb()));
+            metrics.setDiskUsedGb(coalesceMetric(diskUsedGb, previousMetrics == null ? null : previousMetrics.getDiskUsedGb()));
+            metrics.setNetworkRxMbps(coalesceMetric(networkRxMbps, previousMetrics == null ? null : previousMetrics.getNetworkRxMbps()));
+            metrics.setNetworkTxMbps(coalesceMetric(networkTxMbps, previousMetrics == null ? null : previousMetrics.getNetworkTxMbps()));
             nodeMetricsRepository.save(metrics);
         }
 
@@ -158,6 +160,14 @@ public class NodeRegistryService {
             }
         }
         return false;
+    }
+
+    private Double coalesceMetric(Double currentValue, Double previousValue) {
+        return currentValue == null ? previousValue : currentValue;
+    }
+
+    private Long coalesceMetric(Long currentValue, Long previousValue) {
+        return currentValue == null ? previousValue : currentValue;
     }
 
     private Double normalizePercent(Double value) {
@@ -185,7 +195,7 @@ public class NodeRegistryService {
     public List<NodeSummaryResponse> listNodes(String status, String keyword, String serviceType, String sortBy) {
         return managedNodeRepository.findAll().stream()
                 .filter(node -> status == null || status.isBlank() ||
-                        node.getStatus().equalsIgnoreCase(status))
+                        effectiveStatus(node).equalsIgnoreCase(status))
                 .filter(node -> keyword == null || keyword.isBlank() ||
                         node.getNodeName().contains(keyword) ||
                         node.getIpAddress().contains(keyword))
@@ -200,7 +210,10 @@ public class NodeRegistryService {
 
     private Comparator<ManagedNode> getSortComparator(String sortBy) {
         return switch (sortBy) {
-            case "lastHeartbeat" -> Comparator.comparing(ManagedNode::getLastSeenAt).reversed();
+            case "lastHeartbeat" -> Comparator.comparing(
+                    this::lastHeartbeatTimestamp,
+                    Comparator.nullsFirst(Comparator.naturalOrder())
+            ).reversed();
             default -> Comparator.comparing(ManagedNode::getNodeName);
         };
     }
@@ -225,10 +238,10 @@ public class NodeRegistryService {
         long totalServices = discoveredServiceRepository.count();
 
         long onlineCount = allNodes.stream()
-                .filter(node -> "ONLINE".equalsIgnoreCase(node.getStatus()))
+                .filter(node -> "ONLINE".equalsIgnoreCase(effectiveStatus(node)))
                 .count();
         long warningCount = allNodes.stream()
-                .filter(node -> "WARNING".equalsIgnoreCase(node.getStatus()))
+                .filter(node -> "WARNING".equalsIgnoreCase(effectiveStatus(node)))
                 .count();
         long offlineCount = allNodes.size() - onlineCount - warningCount;
 
@@ -269,16 +282,16 @@ public class NodeRegistryService {
 
     private AnomaliesDTO buildAnomalies(List<ManagedNode> allNodes) {
         List<AnomalyNodeDTO> anomalyNodes = allNodes.stream()
-                .filter(node -> !"ONLINE".equalsIgnoreCase(node.getStatus()))
+                .filter(node -> !"ONLINE".equalsIgnoreCase(effectiveStatus(node)))
                 .map(node -> new AnomalyNodeDTO(
                         node.getId(),
                         node.getNodeName(),
-                        node.getStatus(),
+                        effectiveStatus(node),
                         buildNodeAnomalyReason(node),
-                        node.getLastSeenAt(),
+                        lastHeartbeatTimestamp(node),
                         null,
                         null,
-                        calculateDurationSeconds(node.getLastSeenAt())
+                        calculateDurationSeconds(lastHeartbeatTimestamp(node))
                 ))
                 .sorted(Comparator.comparingLong(AnomalyNodeDTO::durationSeconds).reversed())
                 .toList();
@@ -289,6 +302,9 @@ public class NodeRegistryService {
     }
 
     private String buildNodeAnomalyReason(ManagedNode node) {
+        if (isHeartbeatTimeout(node)) {
+            return "HEARTBEAT_TIMEOUT";
+        }
         if ("WARNING".equalsIgnoreCase(node.getStatus())) {
             return "WARNING";
         }
@@ -308,8 +324,8 @@ public class NodeRegistryService {
                 node.getIpAddress(),
                 node.getOsName(),
                 node.getAgentVersion(),
-                node.getStatus(),
-                node.getLastSeenAt(),
+                effectiveStatus(node),
+                lastHeartbeatTimestamp(node),
                 node.getServices().stream().map(DiscoveredService::getServiceType).distinct().sorted().toList()
         );
     }
@@ -328,14 +344,14 @@ public class NodeRegistryService {
                 node.getIpAddress(),
                 node.getOsName(),
                 node.getAgentVersion(),
-                node.getStatus(),
+                effectiveStatus(node),
                 node.getLastSeenAt(),
                 node.getServices().stream()
                         .sorted(Comparator.comparing(DiscoveredService::getServiceType).thenComparing(DiscoveredService::getServiceName))
                         .map(this::toServiceSummary)
                         .toList(),
                 statusSummary,
-                node.getLastSeenAt(),
+                lastHeartbeatTimestamp(node),
                 heartbeatTimeoutRisk,
                 hostMetrics,
                 highRiskServices,
@@ -350,11 +366,15 @@ public class NodeRegistryService {
         if (!"ONLINE".equalsIgnoreCase(node.getStatus())) {
             return "节点离线";
         }
-        long secondsSinceLastSeen = calculateDurationSeconds(node.getLastSeenAt());
-        if (secondsSinceLastSeen > HEARTBEAT_TIMEOUT_THRESHOLD_SECONDS) {
+        Instant lastHeartbeatAt = lastHeartbeatTimestamp(node);
+        if (lastHeartbeatAt == null) {
+            return "等待心跳上报";
+        }
+        long secondsSinceLastHeartbeat = calculateDurationSeconds(lastHeartbeatAt);
+        if (secondsSinceLastHeartbeat > HEARTBEAT_TIMEOUT_THRESHOLD_SECONDS) {
             return "心跳超时，可能失联";
         }
-        if (secondsSinceLastSeen > HEARTBEAT_TIMEOUT_THRESHOLD_SECONDS / 2) {
+        if (secondsSinceLastHeartbeat > HEARTBEAT_TIMEOUT_THRESHOLD_SECONDS / 2) {
             return "心跳延迟，存在超时风险";
         }
         return "节点正常运行";
@@ -364,8 +384,34 @@ public class NodeRegistryService {
         if (!"ONLINE".equalsIgnoreCase(node.getStatus())) {
             return false;
         }
-        long secondsSinceLastSeen = calculateDurationSeconds(node.getLastSeenAt());
-        return secondsSinceLastSeen > HEARTBEAT_TIMEOUT_THRESHOLD_SECONDS / 2;
+        Instant lastHeartbeatAt = lastHeartbeatTimestamp(node);
+        if (lastHeartbeatAt == null) {
+            return false;
+        }
+        long secondsSinceLastHeartbeat = calculateDurationSeconds(lastHeartbeatAt);
+        return secondsSinceLastHeartbeat > HEARTBEAT_TIMEOUT_THRESHOLD_SECONDS / 2;
+    }
+
+    private boolean isHeartbeatTimeout(ManagedNode node) {
+        if (!"ONLINE".equalsIgnoreCase(node.getStatus())) {
+            return false;
+        }
+        Instant lastHeartbeatAt = lastHeartbeatTimestamp(node);
+        if (lastHeartbeatAt == null) {
+            return false;
+        }
+        return calculateDurationSeconds(lastHeartbeatAt) > HEARTBEAT_TIMEOUT_THRESHOLD_SECONDS;
+    }
+
+    private String effectiveStatus(ManagedNode node) {
+        if (isHeartbeatTimeout(node)) {
+            return "WARNING";
+        }
+        return node.getStatus();
+    }
+
+    private Instant lastHeartbeatTimestamp(ManagedNode node) {
+        return node.getLastHeartbeatAt();
     }
 
     private HostMetricsDTO buildHostMetrics(ManagedNode node) {
@@ -424,10 +470,10 @@ public class NodeRegistryService {
         long totalServices = discoveredServiceRepository.count();
 
         long onlineCount = allNodes.stream()
-                .filter(node -> "ONLINE".equalsIgnoreCase(node.getStatus()))
+                .filter(node -> "ONLINE".equalsIgnoreCase(effectiveStatus(node)))
                 .count();
         long warningNodes = allNodes.stream()
-                .filter(node -> "WARNING".equalsIgnoreCase(node.getStatus()))
+                .filter(node -> "WARNING".equalsIgnoreCase(effectiveStatus(node)))
                 .count();
         long offlineCount = allNodes.size() - onlineCount - warningNodes;
 

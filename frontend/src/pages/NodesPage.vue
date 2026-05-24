@@ -72,9 +72,10 @@
           >
             <option value="">全部类型</option>
             <option value="SPRING_BOOT">SPRING_BOOT</option>
-            <option value="CACHE">CACHE</option>
-            <option value="DATABASE">DATABASE</option>
-            <option value="WEB_SERVER">WEB_SERVER</option>
+            <option value="NGINX">NGINX</option>
+            <option value="REDIS">REDIS</option>
+            <option value="MYSQL">MYSQL</option>
+            <option value="NODE_EXPORTER">NODE_EXPORTER</option>
           </select>
         </div>
 

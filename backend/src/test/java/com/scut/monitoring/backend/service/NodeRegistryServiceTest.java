@@ -81,6 +81,34 @@ class NodeRegistryServiceTest {
     }
 
     @Test
+    void registerNodeShouldNotRefreshLastHeartbeatAt() {
+        ManagedNode existingNode = createNode("app-node", "ONLINE");
+        Instant staleHeartbeat = Instant.now().minusSeconds(120);
+        existingNode.setLastHeartbeatAt(staleHeartbeat);
+
+        AgentRegisterRequest request = new AgentRegisterRequest(
+                "app-node",
+                "app-node-host",
+                "172.20.0.10",
+                "linux",
+                "0.1.1",
+                List.of()
+        );
+
+        when(managedNodeRepository.findByNodeName("app-node")).thenReturn(Optional.of(existingNode));
+        when(managedNodeRepository.save(org.mockito.ArgumentMatchers.any(ManagedNode.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(nodeMetricsRepository.findTopByNodeOrderByCollectedAtDesc(existingNode)).thenReturn(Optional.empty());
+
+        var response = nodeRegistryService.registerNode(request);
+
+        assertThat(existingNode.getLastHeartbeatAt()).isEqualTo(staleHeartbeat);
+        assertThat(response.lastHeartbeatAt()).isEqualTo(staleHeartbeat);
+        assertThat(response.statusSummary()).isEqualTo("心跳超时，可能失联");
+        assertThat(response.status()).isEqualTo("WARNING");
+    }
+
+    @Test
     void heartbeatShouldSaveEventAndReturnUpdatedStatus() {
         ManagedNode node = new ManagedNode();
         node.setNodeName("middleware-node");
@@ -140,6 +168,50 @@ class NodeRegistryServiceTest {
     }
 
     @Test
+    void heartbeatShouldMergePartialMetricsWithPreviousSnapshot() {
+        ManagedNode node = createNode("app-node", "ONLINE");
+        NodeMetrics previousMetrics = new NodeMetrics();
+        previousMetrics.setNode(node);
+        previousMetrics.setCollectedAt(Instant.now().minusSeconds(10));
+        previousMetrics.setCpuUsage(25d);
+        previousMetrics.setMemoryUsage(40d);
+        previousMetrics.setMemoryTotalMb(4096L);
+        previousMetrics.setMemoryUsedMb(1638L);
+        previousMetrics.setDiskUsage(70d);
+        previousMetrics.setDiskTotalGb(80L);
+        previousMetrics.setDiskUsedGb(56L);
+        previousMetrics.setNetworkRxMbps(1.5d);
+        previousMetrics.setNetworkTxMbps(2.5d);
+
+        when(managedNodeRepository.findByNodeName("app-node")).thenReturn(Optional.of(node));
+        when(nodeMetricsRepository.findTopByNodeOrderByCollectedAtDesc(node)).thenReturn(Optional.of(previousMetrics));
+
+        nodeRegistryService.heartbeat(new HeartbeatRequest(
+                "app-node",
+                "ONLINE",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                3.5d,
+                null
+        ));
+
+        ArgumentCaptor<NodeMetrics> metricsCaptor = ArgumentCaptor.forClass(NodeMetrics.class);
+        verify(nodeMetricsRepository).save(metricsCaptor.capture());
+        NodeMetrics metrics = metricsCaptor.getValue();
+        assertThat(metrics.getCpuUsage()).isEqualTo(25d);
+        assertThat(metrics.getMemoryUsage()).isEqualTo(40d);
+        assertThat(metrics.getMemoryTotalMb()).isEqualTo(4096L);
+        assertThat(metrics.getDiskUsage()).isEqualTo(70d);
+        assertThat(metrics.getNetworkRxMbps()).isEqualTo(3.5d);
+        assertThat(metrics.getNetworkTxMbps()).isEqualTo(2.5d);
+    }
+
+    @Test
     void getNodeShouldBuildUsableObservationLinks() {
         ManagedNode node = new ManagedNode();
         node.setNodeName("app-node");
@@ -191,6 +263,23 @@ class NodeRegistryServiceTest {
         assertThat(response.anomalies().nodes())
                 .extracting(node -> node.reason())
                 .containsExactlyInAnyOrder("WARNING", "OFFLINE");
+    }
+
+    @Test
+    void overviewShouldTreatTimedOutOnlineNodeAsWarning() {
+        ManagedNode timedOutNode = createNode("app-node", "ONLINE");
+        timedOutNode.setLastHeartbeatAt(Instant.now().minusSeconds(120));
+        when(managedNodeRepository.findAll()).thenReturn(List.of(timedOutNode));
+        when(discoveredServiceRepository.count()).thenReturn(0L);
+
+        var response = nodeRegistryService.overview();
+
+        assertThat(response.nodes().online()).isZero();
+        assertThat(response.nodes().warning()).isEqualTo(1);
+        assertThat(response.unresolvedAlerts()).isEqualTo(1);
+        assertThat(response.anomalies().nodes())
+                .extracting(node -> node.reason())
+                .containsExactly("HEARTBEAT_TIMEOUT");
     }
 
     @Test
@@ -310,6 +399,7 @@ class NodeRegistryServiceTest {
         node.setAgentVersion("0.1.0");
         node.setStatus(status);
         node.setLastSeenAt(Instant.now());
+        node.setLastHeartbeatAt(Instant.now());
         return node;
     }
 }
