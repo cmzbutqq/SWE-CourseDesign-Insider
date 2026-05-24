@@ -14,10 +14,10 @@
           v-for="node in anomalies.nodes"
           :key="`node-${node.id}`"
           class="anomaly-item"
-          :class="{ 'offline': node.status !== 'ONLINE' }"
+          :class="{ 'offline': node.status === 'OFFLINE' }"
         >
           <div class="anomaly-icon">
-            <span v-if="node.status !== 'ONLINE'" class="icon-offline">⊗</span>
+            <span v-if="node.status === 'OFFLINE'" class="icon-offline">⊗</span>
             <span v-else class="icon-warning">!</span>
           </div>
           <div class="anomaly-info">
@@ -106,7 +106,7 @@ const totalAnomalies = computed(() => {
 });
 
 function getNodeColor(node) {
-  if (node.status !== 'ONLINE') {
+  if (node.status === 'OFFLINE') {
     return STATUS_COLORS.OFFLINE;
   }
   return STATUS_COLORS.WARNING;

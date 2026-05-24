@@ -4,9 +4,10 @@ import (
 	"bufio"
 	"os"
 	"os/exec"
+	"scut-monitoring/agent/internal/types"
 	"strconv"
 	"strings"
-	"scut-monitoring/agent/internal/types"
+	"time"
 )
 
 func Collect() types.HeartbeatPayload {
@@ -40,7 +41,7 @@ func Collect() types.HeartbeatPayload {
 
 func collectCPU() float64 {
 	idle1, total1 := readCPUStats()
-	exec.Command("sleep", "0.1").Run()
+	time.Sleep(100 * time.Millisecond)
 	idle2, total2 := readCPUStats()
 
 	if total2-total1 == 0 {
@@ -135,24 +136,35 @@ func collectDisk() (usagePercent float64, totalGb, usedGb int64) {
 	return -1, -1, -1
 }
 
-var prevRxBytes, prevTxBytes uint64
+var (
+	netDevPath          = "/proc/net/dev"
+	nowFunc             = time.Now
+	prevNetworkCounters map[string]networkCounter
+	prevNetworkSampleAt time.Time
+)
+
+type networkCounter struct {
+	rxBytes uint64
+	txBytes uint64
+}
 
 func collectNetwork() (rxMbps, txMbps float64) {
-	file, err := os.Open("/proc/net/dev")
+	file, err := os.Open(netDevPath)
 	if err != nil {
 		return -1, -1
 	}
 	defer file.Close()
 
-	var totalRx, totalTx uint64
+	currentCounters := make(map[string]networkCounter)
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Text()
-		if strings.Contains(line, "lo:") {
-			continue
-		}
 		colonIdx := strings.Index(line, ":")
 		if colonIdx < 0 {
+			continue
+		}
+		interfaceName := strings.TrimSpace(line[:colonIdx])
+		if interfaceName == "lo" {
 			continue
 		}
 		fields := strings.Fields(line[colonIdx+1:])
@@ -164,19 +176,46 @@ func collectNetwork() (rxMbps, txMbps float64) {
 		if err1 != nil || err2 != nil {
 			continue
 		}
-		totalRx += rx
-		totalTx += tx
+		currentCounters[interfaceName] = networkCounter{rxBytes: rx, txBytes: tx}
 	}
 
-	if prevRxBytes == 0 && prevTxBytes == 0 {
-		prevRxBytes = totalRx
-		prevTxBytes = totalTx
+	sampledAt := nowFunc()
+	if prevNetworkSampleAt.IsZero() {
+		prevNetworkCounters = currentCounters
+		prevNetworkSampleAt = sampledAt
 		return -1, -1
 	}
 
-	rxMbps = float64(totalRx-prevRxBytes) * 8.0 / 1000000.0
-	txMbps = float64(totalTx-prevTxBytes) * 8.0 / 1000000.0
-	prevRxBytes = totalRx
-	prevTxBytes = totalTx
+	elapsedSeconds := sampledAt.Sub(prevNetworkSampleAt).Seconds()
+	if elapsedSeconds <= 0 || networkBaselineChanged(prevNetworkCounters, currentCounters) {
+		prevNetworkCounters = currentCounters
+		prevNetworkSampleAt = sampledAt
+		return -1, -1
+	}
+
+	var rxDelta, txDelta uint64
+	for interfaceName, current := range currentCounters {
+		previous := prevNetworkCounters[interfaceName]
+		rxDelta += current.rxBytes - previous.rxBytes
+		txDelta += current.txBytes - previous.txBytes
+	}
+
+	rxMbps = float64(rxDelta) * 8.0 / 1000000.0 / elapsedSeconds
+	txMbps = float64(txDelta) * 8.0 / 1000000.0 / elapsedSeconds
+	prevNetworkCounters = currentCounters
+	prevNetworkSampleAt = sampledAt
 	return rxMbps, txMbps
+}
+
+func networkBaselineChanged(previous, current map[string]networkCounter) bool {
+	if len(previous) != len(current) {
+		return true
+	}
+	for interfaceName, currentCounter := range current {
+		previousCounter, ok := previous[interfaceName]
+		if !ok || currentCounter.rxBytes < previousCounter.rxBytes || currentCounter.txBytes < previousCounter.txBytes {
+			return true
+		}
+	}
+	return false
 }

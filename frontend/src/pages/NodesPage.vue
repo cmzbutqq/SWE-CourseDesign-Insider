@@ -55,6 +55,7 @@
           >
             <option value="">全部状态</option>
             <option value="ONLINE">在线</option>
+            <option value="WARNING">告警</option>
             <option value="OFFLINE">离线</option>
           </select>
         </div>
@@ -101,7 +102,7 @@
           <button @click="filters.keyword = ''; load()">×</button>
         </span>
         <span v-if="filters.status" class="chip">
-          状态: {{ filters.status === 'ONLINE' ? '在线' : '离线' }}
+          状态: {{ statusLabel(filters.status) }}
           <button @click="filters.status = ''; load()">×</button>
         </span>
         <span v-if="filters.serviceType" class="chip">
@@ -167,7 +168,7 @@
             <td>
               <span :class="['status-badge', node.status.toLowerCase()]">
                 <span class="status-dot"></span>
-                {{ node.status === 'ONLINE' ? '在线' : '离线' }}
+                {{ statusLabel(node.status) }}
               </span>
             </td>
             <td :title="formatDateTime(node.lastSeenAt)" class="heartbeat-cell">
@@ -264,10 +265,18 @@ function toggleHeartbeatSort() {
 function typeClass(type) {
   return {
     "type-spring": type === "SPRING_BOOT",
-    "type-cache": type === "CACHE",
-    "type-db": type === "DATABASE",
-    "type-web": type === "WEB_SERVER",
+    "type-cache": type === "CACHE" || type === "REDIS",
+    "type-db": type === "DATABASE" || type === "MYSQL",
+    "type-web": type === "WEB_SERVER" || type === "NGINX",
+    "type-node": type === "NODE_EXPORTER",
   };
+}
+
+function statusLabel(status) {
+  if (status === "ONLINE") return "在线";
+  if (status === "WARNING") return "告警";
+  if (status === "OFFLINE") return "离线";
+  return status || "未知";
 }
 
 onMounted(load);
@@ -512,6 +521,7 @@ onMounted(load);
   background: currentColor;
 }
 .status-badge.online  { background: #f0fdf4; color: #16a34a; }
+.status-badge.warning { background: #fffbe6; color: #d48806; }
 .status-badge.offline { background: #f9fafb; color: #9ca3af; }
 
 /* 心跳列 */
@@ -531,6 +541,7 @@ onMounted(load);
 .type-cache  { background: #fff7ed; color: #9a3412; }
 .type-db     { background: #eff6ff; color: #1e40af; }
 .type-web    { background: #fdf4ff; color: #6b21a8; }
+.type-node   { background: #f0f9ff; color: #0369a1; }
 .empty-types { color: #d1d5db; }
 
 /* 空状态 */

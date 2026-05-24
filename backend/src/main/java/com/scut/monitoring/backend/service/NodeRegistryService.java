@@ -31,14 +31,19 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 
 @Service
 public class NodeRegistryService {
     private static final double MAX_TRENDS_QUERY_HOURS = 24d * 30d;
     private static final long HEARTBEAT_TIMEOUT_THRESHOLD_SECONDS = 90;
+    private static final Set<String> ALLOWED_HEARTBEAT_STATUSES = Set.of("ONLINE", "OFFLINE", "WARNING");
+    private static final double MAX_NETWORK_MEGABITS_PER_SECOND = 100_000d;
 
     private final ManagedNodeRepository managedNodeRepository;
     private final DiscoveredServiceRepository discoveredServiceRepository;
@@ -100,41 +105,80 @@ public class NodeRegistryService {
 
     @Transactional
     public NodeSummaryResponse heartbeat(HeartbeatRequest request) {
+        String normalizedStatus = request.status().toUpperCase();
+        if (!ALLOWED_HEARTBEAT_STATUSES.contains(normalizedStatus)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported status value");
+        }
+
         ManagedNode node = managedNodeRepository.findByNodeName(request.nodeName())
                 .orElseThrow(() -> new EntityNotFoundException("Node not registered: " + request.nodeName()));
 
-        node.setStatus(request.status());
-        node.setLastSeenAt(Instant.now());
+        Instant now = Instant.now();
+        node.setStatus(normalizedStatus);
+        node.setLastSeenAt(now);
         HeartbeatEvent event = new HeartbeatEvent();
         event.setNode(node);
-        event.setStatus(request.status());
-        event.setCreatedAt(Instant.now());
+        event.setStatus(normalizedStatus);
+        event.setCreatedAt(now);
         heartbeatEventRepository.save(event);
 
-        if (hasMetricsData(request)) {
+        Double cpuUsage = normalizePercent(request.cpuUsage());
+        Double memoryUsage = normalizePercent(request.memoryUsage());
+        Long memoryTotalMb = normalizeNonNegativeLong(request.memoryTotalMb());
+        Long memoryUsedMb = normalizeNonNegativeLong(request.memoryUsedMb());
+        Double diskUsage = normalizePercent(request.diskUsage());
+        Long diskTotalGb = normalizeNonNegativeLong(request.diskTotalGb());
+        Long diskUsedGb = normalizeNonNegativeLong(request.diskUsedGb());
+        Double networkRxMbps = normalizeNetworkMbps(request.networkRxMbps());
+        Double networkTxMbps = normalizeNetworkMbps(request.networkTxMbps());
+
+        if (hasMetricsData(cpuUsage, memoryUsage, memoryTotalMb, memoryUsedMb, diskUsage, diskTotalGb, diskUsedGb, networkRxMbps, networkTxMbps)) {
             NodeMetrics metrics = new NodeMetrics();
             metrics.setNode(node);
-            metrics.setCollectedAt(Instant.now());
-            metrics.setCpuUsage(request.cpuUsage());
-            metrics.setMemoryUsage(request.memoryUsage());
-            metrics.setMemoryTotalMb(request.memoryTotalMb());
-            metrics.setMemoryUsedMb(request.memoryUsedMb());
-            metrics.setDiskUsage(request.diskUsage());
-            metrics.setDiskTotalGb(request.diskTotalGb());
-            metrics.setDiskUsedGb(request.diskUsedGb());
-            metrics.setNetworkRxMbps(request.networkRxMbps());
-            metrics.setNetworkTxMbps(request.networkTxMbps());
+            metrics.setCollectedAt(now);
+            metrics.setCpuUsage(cpuUsage);
+            metrics.setMemoryUsage(memoryUsage);
+            metrics.setMemoryTotalMb(memoryTotalMb);
+            metrics.setMemoryUsedMb(memoryUsedMb);
+            metrics.setDiskUsage(diskUsage);
+            metrics.setDiskTotalGb(diskTotalGb);
+            metrics.setDiskUsedGb(diskUsedGb);
+            metrics.setNetworkRxMbps(networkRxMbps);
+            metrics.setNetworkTxMbps(networkTxMbps);
             nodeMetricsRepository.save(metrics);
         }
 
         return toNodeSummary(node);
     }
 
-    private boolean hasMetricsData(HeartbeatRequest request) {
-        return request.cpuUsage() != null
-                || request.memoryUsage() != null
-                || request.diskUsage() != null
-                || request.networkRxMbps() != null;
+    private boolean hasMetricsData(Object... values) {
+        for (Object value : values) {
+            if (value != null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private Double normalizePercent(Double value) {
+        if (value == null || !Double.isFinite(value) || value < 0) {
+            return null;
+        }
+        return Math.min(100d, value);
+    }
+
+    private Long normalizeNonNegativeLong(Long value) {
+        if (value == null || value < 0) {
+            return null;
+        }
+        return value;
+    }
+
+    private Double normalizeNetworkMbps(Double value) {
+        if (value == null || !Double.isFinite(value) || value < 0) {
+            return null;
+        }
+        return Math.min(MAX_NETWORK_MEGABITS_PER_SECOND, value);
     }
 
     @Transactional(readOnly = true)
@@ -183,13 +227,16 @@ public class NodeRegistryService {
         long onlineCount = allNodes.stream()
                 .filter(node -> "ONLINE".equalsIgnoreCase(node.getStatus()))
                 .count();
-        long offlineCount = allNodes.size() - onlineCount;
+        long warningCount = allNodes.stream()
+                .filter(node -> "WARNING".equalsIgnoreCase(node.getStatus()))
+                .count();
+        long offlineCount = allNodes.size() - onlineCount - warningCount;
 
         CounterGroupDTO nodesCounter = new CounterGroupDTO(
                 allNodes.size(),
                 onlineCount,
                 offlineCount,
-                0,
+                warningCount,
                 0,
                 0
         );
@@ -214,7 +261,7 @@ public class NodeRegistryService {
         return new OverviewResponse(
                 nodesCounter,
                 servicesCounter,
-                0L,
+                offlineCount + warningCount,
                 anomalies,
                 quickLinks
         );
@@ -227,7 +274,7 @@ public class NodeRegistryService {
                         node.getId(),
                         node.getNodeName(),
                         node.getStatus(),
-                        "OFFLINE",
+                        buildNodeAnomalyReason(node),
                         node.getLastSeenAt(),
                         null,
                         null,
@@ -239,6 +286,13 @@ public class NodeRegistryService {
         List<AnomalyServiceDTO> anomalyServices = List.of();
 
         return new AnomaliesDTO(anomalyNodes, anomalyServices);
+    }
+
+    private String buildNodeAnomalyReason(ManagedNode node) {
+        if ("WARNING".equalsIgnoreCase(node.getStatus())) {
+            return "WARNING";
+        }
+        return "OFFLINE";
     }
 
     private Long calculateDurationSeconds(Instant lastSeen) {
@@ -290,6 +344,9 @@ public class NodeRegistryService {
     }
 
     private String buildStatusSummary(ManagedNode node) {
+        if ("WARNING".equalsIgnoreCase(node.getStatus())) {
+            return "节点处于告警状态";
+        }
         if (!"ONLINE".equalsIgnoreCase(node.getStatus())) {
             return "节点离线";
         }
@@ -336,12 +393,17 @@ public class NodeRegistryService {
     }
 
     private List<QuickLinkDTO> buildQuickLinks(ManagedNode node) {
-        String instanceFilter = node.getIpAddress();
+        String jobName = node.getNodeName() == null ? "" : node.getNodeName();
+        String prometheusExpression = "up{job=\"" + jobName + "\"}";
         return List.of(
-                new QuickLinkDTO("Grafana", grafanaBaseUrl + "/d/host-metrics?var-instance=" + instanceFilter),
-                new QuickLinkDTO("Prometheus", prometheusBaseUrl + "/graph?g0.expr=instance%3D%22" + instanceFilter + "%22"),
+                new QuickLinkDTO("Grafana", grafanaBaseUrl + "/d/scut-monitoring-overview/scut-monitoring-overview?var-job=" + encodeQueryValue(jobName)),
+                new QuickLinkDTO("Prometheus", prometheusBaseUrl + "/graph?g0.expr=" + encodeQueryValue(prometheusExpression)),
                 new QuickLinkDTO("SkyWalking", skywalkingBaseUrl + "/general-service")
         );
+    }
+
+    private String encodeQueryValue(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
     private ServiceSummaryResponse toServiceSummary(DiscoveredService service) {
@@ -364,12 +426,14 @@ public class NodeRegistryService {
         long onlineCount = allNodes.stream()
                 .filter(node -> "ONLINE".equalsIgnoreCase(node.getStatus()))
                 .count();
-        long offlineCount = allNodes.size() - onlineCount;
+        long warningNodes = allNodes.stream()
+                .filter(node -> "WARNING".equalsIgnoreCase(node.getStatus()))
+                .count();
+        long offlineCount = allNodes.size() - onlineCount - warningNodes;
 
-        long warningNodes = Math.max(0, (long)(Math.random() * 2));
-        long abnormalServices = Math.min(totalServices, Math.max(0, (long) (Math.random() * 3)));
+        long abnormalServices = 0;
         long healthyServices = Math.max(0, totalServices - abnormalServices);
-        long unresolvedAlerts = abnormalServices + warningNodes;
+        long unresolvedAlerts = offlineCount + warningNodes + abnormalServices;
 
         MetricsSnapshot snapshot = new MetricsSnapshot(
                 Instant.now(),
@@ -389,6 +453,11 @@ public class NodeRegistryService {
     @Transactional
     public int cleanupOldSnapshots(Instant cutoffTime) {
         return metricsSnapshotRepository.deleteOlderThan(cutoffTime);
+    }
+
+    @Transactional
+    public int cleanupOldNodeMetrics(Instant cutoffTime) {
+        return nodeMetricsRepository.deleteOlderThan(cutoffTime);
     }
 
     @Transactional(readOnly = true)

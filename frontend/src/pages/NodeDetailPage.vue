@@ -13,13 +13,17 @@
 
     <div v-if="error" class="error-banner">{{ error }}</div>
 
-    <template v-if="!error">
+    <section v-if="loading && !hasLoaded && !error" class="detail-loading">
+      <p>正在加载节点详情...</p>
+    </section>
+
+    <template v-if="!error && hasLoaded">
       <!-- 第一层：状态摘要 + 心跳 + 超时风险 -->
       <section class="diagnosis-section">
         <div class="status-banner" :class="statusBannerClass">
           <div class="status-icon">
             <span v-if="node.status === 'ONLINE' && !node.heartbeatTimeoutRisk">✓</span>
-            <span v-else-if="node.heartbeatTimeoutRisk">⚠</span>
+            <span v-else-if="node.status === 'WARNING' || node.heartbeatTimeoutRisk">⚠</span>
             <span v-else>⊗</span>
           </div>
           <div class="status-text">
@@ -27,7 +31,7 @@
             <p class="status-detail">
               节点状态：
               <span :class="['status-badge', node.status?.toLowerCase()]">
-                {{ node.status === 'ONLINE' ? '在线' : '离线' }}
+                {{ statusLabel }}
               </span>
               <span class="separator">|</span>
               最近心跳：
@@ -54,7 +58,7 @@
           <article class="metric-card" :class="getMetricLevel('memory', node.hostMetrics.memoryUsage)">
             <span class="metric-label">内存使用率</span>
             <strong class="metric-value">{{ formatPercent(node.hostMetrics.memoryUsage) }}</strong>
-            <div class="metric-detail">{{ node.hostMetrics.memoryUsedMb || '-' }} / {{ node.hostMetrics.memoryTotalMb || '-' }} MB</div>
+            <div class="metric-detail">{{ node.hostMetrics.memoryUsedMb ?? '-' }} / {{ node.hostMetrics.memoryTotalMb ?? '-' }} MB</div>
             <div class="metric-bar">
               <div class="metric-bar-fill" :style="{ width: clampPercent(node.hostMetrics.memoryUsage) }"></div>
             </div>
@@ -62,7 +66,7 @@
           <article class="metric-card" :class="getMetricLevel('disk', node.hostMetrics.diskUsage)">
             <span class="metric-label">磁盘使用率</span>
             <strong class="metric-value">{{ formatPercent(node.hostMetrics.diskUsage) }}</strong>
-            <div class="metric-detail">{{ node.hostMetrics.diskUsedGb || '-' }} / {{ node.hostMetrics.diskTotalGb || '-' }} GB</div>
+            <div class="metric-detail">{{ node.hostMetrics.diskUsedGb ?? '-' }} / {{ node.hostMetrics.diskTotalGb ?? '-' }} GB</div>
             <div class="metric-bar">
               <div class="metric-bar-fill" :style="{ width: clampPercent(node.hostMetrics.diskUsage) }"></div>
             </div>
@@ -191,6 +195,7 @@ import { fetchNodeDetail } from "../services/api";
 const route = useRoute();
 const error = ref("");
 const loading = ref(false);
+const hasLoaded = ref(false);
 const node = reactive({
   nodeName: "",
   hostname: "",
@@ -208,9 +213,16 @@ const node = reactive({
 });
 
 const statusBannerClass = computed(() => {
+  if (node.status === "WARNING" || node.heartbeatTimeoutRisk) return "banner-warning";
   if (node.status !== "ONLINE") return "banner-offline";
-  if (node.heartbeatTimeoutRisk) return "banner-warning";
   return "banner-healthy";
+});
+
+const statusLabel = computed(() => {
+  if (node.status === "ONLINE") return "在线";
+  if (node.status === "WARNING") return "警告";
+  if (node.status === "OFFLINE") return "离线";
+  return "未知";
 });
 
 async function load() {
@@ -218,6 +230,7 @@ async function load() {
   loading.value = true;
   try {
     Object.assign(node, await fetchNodeDetail(route.params.id));
+    hasLoaded.value = true;
   } catch (err) {
     error.value = err.message;
   } finally {
@@ -265,9 +278,10 @@ function getMetricLevel(type, value) {
 function typeClass(type) {
   return {
     "type-spring": type === "SPRING_BOOT",
-    "type-cache": type === "CACHE",
-    "type-db": type === "DATABASE",
-    "type-web": type === "WEB_SERVER"
+    "type-cache": type === "CACHE" || type === "REDIS",
+    "type-db": type === "DATABASE" || type === "MYSQL",
+    "type-web": type === "WEB_SERVER" || type === "NGINX",
+    "type-node": type === "NODE_EXPORTER"
   };
 }
 
@@ -345,6 +359,15 @@ onMounted(load);
   padding: 1rem 1.5rem;
   color: #cf1322;
   margin-bottom: 1.5rem;
+}
+
+.detail-loading {
+  background: white;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  padding: 3rem 2rem;
+  text-align: center;
+  color: #8c8c8c;
 }
 
 /* ── 第一层：状态摘要 ── */
@@ -440,6 +463,11 @@ onMounted(load);
 .status-badge.offline {
   background: #f9fafb;
   color: #9ca3af;
+}
+
+.status-badge.warning {
+  background: #fffbe6;
+  color: #d48806;
 }
 
 .timeout-warning {
@@ -799,6 +827,11 @@ onMounted(load);
 .type-web {
   background: #fdf4ff;
   color: #6b21a8;
+}
+
+.type-node {
+  background: #f0f9ff;
+  color: #0369a1;
 }
 
 .metrics-path {

@@ -6,6 +6,7 @@ import com.scut.monitoring.backend.dto.HeartbeatRequest;
 import com.scut.monitoring.backend.model.HeartbeatEvent;
 import com.scut.monitoring.backend.model.ManagedNode;
 import com.scut.monitoring.backend.model.MetricsSnapshot;
+import com.scut.monitoring.backend.model.NodeMetrics;
 import com.scut.monitoring.backend.repository.DiscoveredServiceRepository;
 import com.scut.monitoring.backend.repository.HeartbeatEventRepository;
 import com.scut.monitoring.backend.repository.ManagedNodeRepository;
@@ -102,6 +103,113 @@ class NodeRegistryServiceTest {
     }
 
     @Test
+    void heartbeatShouldPersistSanitizedHostMetrics() {
+        ManagedNode node = new ManagedNode();
+        node.setNodeName("app-node");
+        node.setHostname("app-host");
+        node.setIpAddress("172.20.0.10");
+        node.setOsName("linux");
+        node.setAgentVersion("0.1.0");
+        node.setStatus("ONLINE");
+
+        when(managedNodeRepository.findByNodeName("app-node")).thenReturn(Optional.of(node));
+
+        nodeRegistryService.heartbeat(new HeartbeatRequest(
+                "app-node",
+                "WARNING",
+                120d,
+                55.5d,
+                2048L,
+                1024L,
+                -10d,
+                40L,
+                10L,
+                Double.POSITIVE_INFINITY,
+                1.25d
+        ));
+
+        ArgumentCaptor<NodeMetrics> metricsCaptor = ArgumentCaptor.forClass(NodeMetrics.class);
+        verify(nodeMetricsRepository).save(metricsCaptor.capture());
+        NodeMetrics metrics = metricsCaptor.getValue();
+        assertThat(metrics.getNode()).isSameAs(node);
+        assertThat(metrics.getCpuUsage()).isEqualTo(100d);
+        assertThat(metrics.getMemoryUsage()).isEqualTo(55.5d);
+        assertThat(metrics.getDiskUsage()).isNull();
+        assertThat(metrics.getNetworkRxMbps()).isNull();
+        assertThat(metrics.getNetworkTxMbps()).isEqualTo(1.25d);
+    }
+
+    @Test
+    void getNodeShouldBuildUsableObservationLinks() {
+        ManagedNode node = new ManagedNode();
+        node.setNodeName("app-node");
+        node.setHostname("app-host");
+        node.setIpAddress("172.20.0.10");
+        node.setOsName("linux");
+        node.setAgentVersion("0.1.0");
+        node.setStatus("ONLINE");
+        node.setLastSeenAt(Instant.now());
+
+        when(managedNodeRepository.findById(1L)).thenReturn(Optional.of(node));
+        when(nodeMetricsRepository.findTopByNodeOrderByCollectedAtDesc(node)).thenReturn(Optional.empty());
+
+        var response = nodeRegistryService.getNode(1L);
+
+        assertThat(response.quickLinks())
+                .extracting(link -> link.url())
+                .contains(
+                        "http://localhost:13000/d/scut-monitoring-overview/scut-monitoring-overview?var-job=app-node",
+                        "http://localhost:19090/graph?g0.expr=up%7Bjob%3D%22app-node%22%7D",
+                        "http://localhost:18082/general-service"
+                );
+    }
+
+    @Test
+    void getNodeShouldDescribeWarningStatusWithoutCallingItOffline() {
+        ManagedNode node = createNode("app-node", "WARNING");
+        when(managedNodeRepository.findById(1L)).thenReturn(Optional.of(node));
+        when(nodeMetricsRepository.findTopByNodeOrderByCollectedAtDesc(node)).thenReturn(Optional.empty());
+
+        var response = nodeRegistryService.getNode(1L);
+
+        assertThat(response.statusSummary()).isEqualTo("节点处于告警状态");
+    }
+
+    @Test
+    void overviewShouldCountWarningNodesSeparatelyFromOfflineNodes() {
+        ManagedNode onlineNode = createNode("app-node", "ONLINE");
+        ManagedNode warningNode = createNode("middleware-node", "WARNING");
+        ManagedNode offlineNode = createNode("db-node", "OFFLINE");
+        when(managedNodeRepository.findAll()).thenReturn(List.of(onlineNode, warningNode, offlineNode));
+        when(discoveredServiceRepository.count()).thenReturn(0L);
+
+        var response = nodeRegistryService.overview();
+
+        assertThat(response.nodes().online()).isEqualTo(1);
+        assertThat(response.nodes().warning()).isEqualTo(1);
+        assertThat(response.nodes().offline()).isEqualTo(1);
+        assertThat(response.anomalies().nodes())
+                .extracting(node -> node.reason())
+                .containsExactlyInAnyOrder("WARNING", "OFFLINE");
+    }
+
+    @Test
+    void heartbeatShouldRejectUnsupportedStatusAsBadRequest() {
+        ManagedNode node = new ManagedNode();
+        node.setNodeName("middleware-node");
+        when(managedNodeRepository.findByNodeName("middleware-node")).thenReturn(Optional.of(node));
+
+        ResponseStatusException exception = org.assertj.core.api.Assertions.catchThrowableOfType(
+                () -> nodeRegistryService.heartbeat(new HeartbeatRequest("middleware-node", "DEGRADED", null, null, null, null, null, null, null, null, null)),
+                ResponseStatusException.class
+        );
+
+        assertThat(exception).isNotNull();
+        assertThat(exception.getStatusCode().value()).isEqualTo(400);
+        verify(heartbeatEventRepository, never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void saveMetricsSnapshotShouldNeverPersistNegativeHealthyServices() {
         when(managedNodeRepository.findAll()).thenReturn(List.of());
         when(discoveredServiceRepository.count()).thenReturn(0L);
@@ -127,6 +235,17 @@ class NodeRegistryServiceTest {
 
         assertThat(deleted).isEqualTo(8);
         verify(metricsSnapshotRepository).deleteOlderThan(cutoff);
+    }
+
+    @Test
+    void cleanupOldNodeMetricsShouldDelegateDeletionToRepository() {
+        Instant cutoff = Instant.parse("2026-01-01T00:00:00Z");
+        when(nodeMetricsRepository.deleteOlderThan(cutoff)).thenReturn(12);
+
+        int deleted = nodeRegistryService.cleanupOldNodeMetrics(cutoff);
+
+        assertThat(deleted).isEqualTo(12);
+        verify(nodeMetricsRepository).deleteOlderThan(cutoff);
     }
 
     @Test
@@ -180,5 +299,17 @@ class NodeRegistryServiceTest {
                 org.mockito.ArgumentMatchers.any(Instant.class)
         );
         verify(metricsSnapshotRepository, never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    private ManagedNode createNode(String nodeName, String status) {
+        ManagedNode node = new ManagedNode();
+        node.setNodeName(nodeName);
+        node.setHostname(nodeName + "-host");
+        node.setIpAddress("172.20.0.1");
+        node.setOsName("linux");
+        node.setAgentVersion("0.1.0");
+        node.setStatus(status);
+        node.setLastSeenAt(Instant.now());
+        return node;
     }
 }
