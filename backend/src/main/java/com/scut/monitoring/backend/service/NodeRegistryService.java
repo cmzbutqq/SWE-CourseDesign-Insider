@@ -150,7 +150,7 @@ public class NodeRegistryService {
             nodeMetricsRepository.save(metrics);
         }
 
-        return toNodeSummary(node);
+        return toNodeSummary(node, now);
     }
 
     private boolean hasMetricsData(Object... values) {
@@ -193,9 +193,10 @@ public class NodeRegistryService {
 
     @Transactional(readOnly = true)
     public List<NodeSummaryResponse> listNodes(String status, String keyword, String serviceType, String sortBy) {
+        Instant now = Instant.now();
         return managedNodeRepository.findAll().stream()
                 .filter(node -> status == null || status.isBlank() ||
-                        effectiveStatus(node).equalsIgnoreCase(status))
+                        effectiveStatus(node, now).equalsIgnoreCase(status))
                 .filter(node -> keyword == null || keyword.isBlank() ||
                         node.getNodeName().contains(keyword) ||
                         node.getIpAddress().contains(keyword))
@@ -204,7 +205,7 @@ public class NodeRegistryService {
                                 .map(DiscoveredService::getServiceType)
                                 .anyMatch(st -> st.equalsIgnoreCase(serviceType)))
                 .sorted(getSortComparator(sortBy))
-                .map(this::toNodeSummary)
+                .map(node -> toNodeSummary(node, now))
                 .toList();
     }
 
@@ -236,12 +237,13 @@ public class NodeRegistryService {
     public OverviewResponse overview() {
         List<ManagedNode> allNodes = managedNodeRepository.findAll();
         long totalServices = discoveredServiceRepository.count();
+        Instant now = Instant.now();
 
         long onlineCount = allNodes.stream()
-                .filter(node -> "ONLINE".equalsIgnoreCase(effectiveStatus(node)))
+                .filter(node -> "ONLINE".equalsIgnoreCase(effectiveStatus(node, now)))
                 .count();
         long warningCount = allNodes.stream()
-                .filter(node -> "WARNING".equalsIgnoreCase(effectiveStatus(node)))
+                .filter(node -> "WARNING".equalsIgnoreCase(effectiveStatus(node, now)))
                 .count();
         long offlineCount = allNodes.size() - onlineCount - warningCount;
 
@@ -263,7 +265,7 @@ public class NodeRegistryService {
                 0
         );
 
-        AnomaliesDTO anomalies = buildAnomalies(allNodes);
+        AnomaliesDTO anomalies = buildAnomalies(allNodes, now);
 
         List<String> quickLinks = List.of(
                 "Prometheus: " + prometheusBaseUrl,
@@ -280,18 +282,18 @@ public class NodeRegistryService {
         );
     }
 
-    private AnomaliesDTO buildAnomalies(List<ManagedNode> allNodes) {
+    private AnomaliesDTO buildAnomalies(List<ManagedNode> allNodes, Instant now) {
         List<AnomalyNodeDTO> anomalyNodes = allNodes.stream()
-                .filter(node -> !"ONLINE".equalsIgnoreCase(effectiveStatus(node)))
+                .filter(node -> !"ONLINE".equalsIgnoreCase(effectiveStatus(node, now)))
                 .map(node -> new AnomalyNodeDTO(
                         node.getId(),
                         node.getNodeName(),
-                        effectiveStatus(node),
-                        buildNodeAnomalyReason(node),
-                        lastHeartbeatTimestamp(node),
+                        effectiveStatus(node, now),
+                        buildNodeAnomalyReason(node, now),
+                        anomalyTimestamp(node),
                         null,
                         null,
-                        calculateDurationSeconds(lastHeartbeatTimestamp(node))
+                        calculateDurationSeconds(anomalyTimestamp(node), now)
                 ))
                 .sorted(Comparator.comparingLong(AnomalyNodeDTO::durationSeconds).reversed())
                 .toList();
@@ -301,8 +303,11 @@ public class NodeRegistryService {
         return new AnomaliesDTO(anomalyNodes, anomalyServices);
     }
 
-    private String buildNodeAnomalyReason(ManagedNode node) {
-        if (isHeartbeatTimeout(node)) {
+    private String buildNodeAnomalyReason(ManagedNode node, Instant now) {
+        if (isHeartbeatMissing(node)) {
+            return "NO_HEARTBEAT";
+        }
+        if (isHeartbeatTimeout(node, now)) {
             return "HEARTBEAT_TIMEOUT";
         }
         if ("WARNING".equalsIgnoreCase(node.getStatus())) {
@@ -311,12 +316,12 @@ public class NodeRegistryService {
         return "OFFLINE";
     }
 
-    private Long calculateDurationSeconds(Instant lastSeen) {
-        if (lastSeen == null) return 0L;
-        return Math.max(0, Instant.now().getEpochSecond() - lastSeen.getEpochSecond());
+    private Long calculateDurationSeconds(Instant since, Instant now) {
+        if (since == null) return 0L;
+        return Math.max(0, now.getEpochSecond() - since.getEpochSecond());
     }
 
-    private NodeSummaryResponse toNodeSummary(ManagedNode node) {
+    private NodeSummaryResponse toNodeSummary(ManagedNode node, Instant now) {
         return new NodeSummaryResponse(
                 node.getId(),
                 node.getNodeName(),
@@ -324,15 +329,17 @@ public class NodeRegistryService {
                 node.getIpAddress(),
                 node.getOsName(),
                 node.getAgentVersion(),
-                effectiveStatus(node),
+                effectiveStatus(node, now),
+                node.getLastSeenAt(),
                 lastHeartbeatTimestamp(node),
                 node.getServices().stream().map(DiscoveredService::getServiceType).distinct().sorted().toList()
         );
     }
 
     private NodeDetailResponse toNodeDetail(ManagedNode node) {
-        String statusSummary = buildStatusSummary(node);
-        boolean heartbeatTimeoutRisk = isHeartbeatTimeoutRisk(node);
+        Instant now = Instant.now();
+        String statusSummary = buildStatusSummary(node, now);
+        boolean heartbeatTimeoutRisk = isHeartbeatTimeoutRisk(node, now);
         HostMetricsDTO hostMetrics = buildHostMetrics(node);
         List<ServiceSummaryResponse> highRiskServices = buildHighRiskServices(node);
         List<QuickLinkDTO> quickLinks = buildQuickLinks(node);
@@ -344,7 +351,7 @@ public class NodeRegistryService {
                 node.getIpAddress(),
                 node.getOsName(),
                 node.getAgentVersion(),
-                effectiveStatus(node),
+                effectiveStatus(node, now),
                 node.getLastSeenAt(),
                 node.getServices().stream()
                         .sorted(Comparator.comparing(DiscoveredService::getServiceType).thenComparing(DiscoveredService::getServiceName))
@@ -359,7 +366,7 @@ public class NodeRegistryService {
         );
     }
 
-    private String buildStatusSummary(ManagedNode node) {
+    private String buildStatusSummary(ManagedNode node, Instant now) {
         if ("WARNING".equalsIgnoreCase(node.getStatus())) {
             return "节点处于告警状态";
         }
@@ -370,7 +377,7 @@ public class NodeRegistryService {
         if (lastHeartbeatAt == null) {
             return "等待心跳上报";
         }
-        long secondsSinceLastHeartbeat = calculateDurationSeconds(lastHeartbeatAt);
+        long secondsSinceLastHeartbeat = calculateDurationSeconds(lastHeartbeatAt, now);
         if (secondsSinceLastHeartbeat > HEARTBEAT_TIMEOUT_THRESHOLD_SECONDS) {
             return "心跳超时，可能失联";
         }
@@ -380,7 +387,7 @@ public class NodeRegistryService {
         return "节点正常运行";
     }
 
-    private boolean isHeartbeatTimeoutRisk(ManagedNode node) {
+    private boolean isHeartbeatTimeoutRisk(ManagedNode node, Instant now) {
         if (!"ONLINE".equalsIgnoreCase(node.getStatus())) {
             return false;
         }
@@ -388,11 +395,15 @@ public class NodeRegistryService {
         if (lastHeartbeatAt == null) {
             return false;
         }
-        long secondsSinceLastHeartbeat = calculateDurationSeconds(lastHeartbeatAt);
+        long secondsSinceLastHeartbeat = calculateDurationSeconds(lastHeartbeatAt, now);
         return secondsSinceLastHeartbeat > HEARTBEAT_TIMEOUT_THRESHOLD_SECONDS / 2;
     }
 
-    private boolean isHeartbeatTimeout(ManagedNode node) {
+    private boolean isHeartbeatMissing(ManagedNode node) {
+        return "ONLINE".equalsIgnoreCase(node.getStatus()) && lastHeartbeatTimestamp(node) == null;
+    }
+
+    private boolean isHeartbeatTimeout(ManagedNode node, Instant now) {
         if (!"ONLINE".equalsIgnoreCase(node.getStatus())) {
             return false;
         }
@@ -400,11 +411,11 @@ public class NodeRegistryService {
         if (lastHeartbeatAt == null) {
             return false;
         }
-        return calculateDurationSeconds(lastHeartbeatAt) > HEARTBEAT_TIMEOUT_THRESHOLD_SECONDS;
+        return calculateDurationSeconds(lastHeartbeatAt, now) > HEARTBEAT_TIMEOUT_THRESHOLD_SECONDS;
     }
 
-    private String effectiveStatus(ManagedNode node) {
-        if (isHeartbeatTimeout(node)) {
+    private String effectiveStatus(ManagedNode node, Instant now) {
+        if (isHeartbeatMissing(node) || isHeartbeatTimeout(node, now)) {
             return "WARNING";
         }
         return node.getStatus();
@@ -412,6 +423,11 @@ public class NodeRegistryService {
 
     private Instant lastHeartbeatTimestamp(ManagedNode node) {
         return node.getLastHeartbeatAt();
+    }
+
+    private Instant anomalyTimestamp(ManagedNode node) {
+        Instant lastHeartbeatAt = lastHeartbeatTimestamp(node);
+        return lastHeartbeatAt == null ? node.getLastSeenAt() : lastHeartbeatAt;
     }
 
     private HostMetricsDTO buildHostMetrics(ManagedNode node) {
@@ -468,12 +484,13 @@ public class NodeRegistryService {
     public void saveMetricsSnapshot() {
         List<ManagedNode> allNodes = managedNodeRepository.findAll();
         long totalServices = discoveredServiceRepository.count();
+        Instant now = Instant.now();
 
         long onlineCount = allNodes.stream()
-                .filter(node -> "ONLINE".equalsIgnoreCase(effectiveStatus(node)))
+                .filter(node -> "ONLINE".equalsIgnoreCase(effectiveStatus(node, now)))
                 .count();
         long warningNodes = allNodes.stream()
-                .filter(node -> "WARNING".equalsIgnoreCase(effectiveStatus(node)))
+                .filter(node -> "WARNING".equalsIgnoreCase(effectiveStatus(node, now)))
                 .count();
         long offlineCount = allNodes.size() - onlineCount - warningNodes;
 
@@ -482,7 +499,7 @@ public class NodeRegistryService {
         long unresolvedAlerts = offlineCount + warningNodes + abnormalServices;
 
         MetricsSnapshot snapshot = new MetricsSnapshot(
-                Instant.now(),
+                now,
                 allNodes.size(),
                 onlineCount,
                 offlineCount,

@@ -172,8 +172,8 @@
                 {{ statusLabel(node.status) }}
               </span>
             </td>
-            <td :title="formatDateTime(node.lastSeenAt)" class="heartbeat-cell">
-              {{ formatRelativeTime(node.lastSeenAt) }}
+            <td :title="formatDateTime(node.lastHeartbeatAt)" class="heartbeat-cell">
+              {{ formatRelativeTime(node.lastHeartbeatAt) }}
             </td>
             <td>
               <span v-if="node.serviceTypes.length === 0" class="empty-types">-</span>

@@ -81,6 +81,28 @@ class NodeRegistryServiceTest {
     }
 
     @Test
+    void registerNodeShouldReportWaitingHeartbeatAsWarning() {
+        AgentRegisterRequest request = new AgentRegisterRequest(
+                "app-node",
+                "app-node-host",
+                "172.20.0.10",
+                "linux",
+                "0.1.0",
+                List.of(new DiscoveredServicePayload("nginx", "NGINX", 80, "nginx", "/metrics"))
+        );
+
+        when(managedNodeRepository.findByNodeName("app-node")).thenReturn(Optional.empty());
+        when(managedNodeRepository.save(org.mockito.ArgumentMatchers.any(ManagedNode.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        var response = nodeRegistryService.registerNode(request);
+
+        assertThat(response.status()).isEqualTo("WARNING");
+        assertThat(response.statusSummary()).isEqualTo("等待心跳上报");
+        assertThat(response.lastHeartbeatAt()).isNull();
+    }
+
+    @Test
     void registerNodeShouldNotRefreshLastHeartbeatAt() {
         ManagedNode existingNode = createNode("app-node", "ONLINE");
         Instant staleHeartbeat = Instant.now().minusSeconds(120);
@@ -280,6 +302,40 @@ class NodeRegistryServiceTest {
         assertThat(response.anomalies().nodes())
                 .extracting(node -> node.reason())
                 .containsExactly("HEARTBEAT_TIMEOUT");
+    }
+
+    @Test
+    void overviewShouldTreatOnlineNodeWithoutHeartbeatAsWarning() {
+        ManagedNode waitingNode = createNode("app-node", "ONLINE");
+        waitingNode.setLastSeenAt(Instant.now().minusSeconds(300));
+        waitingNode.setLastHeartbeatAt(null);
+        when(managedNodeRepository.findAll()).thenReturn(List.of(waitingNode));
+        when(discoveredServiceRepository.count()).thenReturn(0L);
+
+        var response = nodeRegistryService.overview();
+
+        assertThat(response.nodes().online()).isZero();
+        assertThat(response.nodes().warning()).isEqualTo(1);
+        assertThat(response.anomalies().nodes())
+                .extracting(node -> node.reason())
+                .containsExactly("NO_HEARTBEAT");
+        assertThat(response.anomalies().nodes().get(0).durationSeconds()).isGreaterThan(0);
+    }
+
+    @Test
+    void listNodesShouldExposeLastSeenAndLastHeartbeatSeparately() {
+        ManagedNode waitingNode = createNode("app-node", "ONLINE");
+        Instant lastSeenAt = Instant.now().minusSeconds(30);
+        waitingNode.setLastSeenAt(lastSeenAt);
+        waitingNode.setLastHeartbeatAt(null);
+        when(managedNodeRepository.findAll()).thenReturn(List.of(waitingNode));
+
+        var response = nodeRegistryService.listNodes(null, null, null, "name");
+
+        assertThat(response).hasSize(1);
+        assertThat(response.get(0).status()).isEqualTo("WARNING");
+        assertThat(response.get(0).lastSeenAt()).isEqualTo(lastSeenAt);
+        assertThat(response.get(0).lastHeartbeatAt()).isNull();
     }
 
     @Test
