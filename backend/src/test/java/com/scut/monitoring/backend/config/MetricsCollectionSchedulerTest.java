@@ -35,4 +35,13 @@ class MetricsCollectionSchedulerTest {
         assertThat(elapsedToBefore.toDays()).isBetween(29L, 31L);
         assertThat(elapsedToAfter.toDays()).isBetween(29L, 31L);
     }
+
+    @Test
+    void startupBackfillShouldDelegateToNodeRegistryService() {
+        MetricsCollectionScheduler scheduler = new MetricsCollectionScheduler(nodeRegistryService, 30, 7);
+
+        scheduler.backfillMissingLastHeartbeatAt();
+
+        verify(nodeRegistryService).backfillMissingLastHeartbeatAt();
+    }
 }

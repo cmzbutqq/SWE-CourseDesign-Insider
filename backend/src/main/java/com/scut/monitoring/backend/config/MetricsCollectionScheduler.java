@@ -4,6 +4,8 @@ import com.scut.monitoring.backend.service.NodeRegistryService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -29,6 +31,14 @@ public class MetricsCollectionScheduler {
         this.nodeRegistryService = nodeRegistryService;
         this.snapshotRetentionDays = snapshotRetentionDays;
         this.nodeMetricsRetentionDays = nodeMetricsRetentionDays;
+    }
+
+    @EventListener(ApplicationReadyEvent.class)
+    public void backfillMissingLastHeartbeatAt() {
+        int backfilledCount = nodeRegistryService.backfillMissingLastHeartbeatAt();
+        if (backfilledCount > 0) {
+            logger.info("Backfilled last heartbeat time for {} existing nodes", backfilledCount);
+        }
     }
 
     @Scheduled(cron = "0 */5 * * * *")

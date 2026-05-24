@@ -523,6 +523,11 @@ public class NodeRegistryService {
         return nodeMetricsRepository.deleteOlderThan(cutoffTime);
     }
 
+    @Transactional
+    public int backfillMissingLastHeartbeatAt() {
+        return managedNodeRepository.backfillMissingLastHeartbeatAt();
+    }
+
     @Transactional(readOnly = true)
     public TrendsResponse getTrends(double hoursBack) {
         validateHoursBack(hoursBack);

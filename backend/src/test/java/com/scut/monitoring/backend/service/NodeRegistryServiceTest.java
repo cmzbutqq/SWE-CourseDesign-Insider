@@ -394,6 +394,16 @@ class NodeRegistryServiceTest {
     }
 
     @Test
+    void backfillMissingLastHeartbeatAtShouldDelegateToRepository() {
+        when(managedNodeRepository.backfillMissingLastHeartbeatAt()).thenReturn(3);
+
+        int updated = nodeRegistryService.backfillMissingLastHeartbeatAt();
+
+        assertThat(updated).isEqualTo(3);
+        verify(managedNodeRepository).backfillMissingLastHeartbeatAt();
+    }
+
+    @Test
     void getTrendsShouldRejectOverflowHoursAsBadRequest() {
         ResponseStatusException exception = org.assertj.core.api.Assertions.catchThrowableOfType(
                 () -> nodeRegistryService.getTrends(1e308),
