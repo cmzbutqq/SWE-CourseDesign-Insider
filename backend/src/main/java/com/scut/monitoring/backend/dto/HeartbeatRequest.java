@@ -5,6 +5,15 @@ import jakarta.validation.constraints.Pattern;
 
 public record HeartbeatRequest(
         @NotBlank String nodeName,
-        @NotBlank @Pattern(regexp = "ONLINE|OFFLINE|WARNING", message = "status must be ONLINE, OFFLINE, or WARNING") String status
+        @NotBlank @Pattern(regexp = "ONLINE|OFFLINE|WARNING", message = "status must be ONLINE, OFFLINE, or WARNING") String status,
+        Double cpuUsage,
+        Double memoryUsage,
+        Long memoryTotalMb,
+        Long memoryUsedMb,
+        Double diskUsage,
+        Long diskTotalGb,
+        Long diskUsedGb,
+        Double networkRxMbps,
+        Double networkTxMbps
 ) {
 }

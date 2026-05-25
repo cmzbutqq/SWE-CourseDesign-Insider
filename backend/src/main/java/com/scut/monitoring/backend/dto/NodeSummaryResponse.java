@@ -12,6 +12,7 @@ public record NodeSummaryResponse(
         String agentVersion,
         String status,
         Instant lastSeenAt,
+        Instant lastHeartbeatAt,
         List<String> serviceTypes
 ) {
 }

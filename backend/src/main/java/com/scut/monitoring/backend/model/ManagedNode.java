@@ -43,6 +43,9 @@ public class ManagedNode {
     @Column(nullable = false)
     private Instant lastSeenAt;
 
+    @Column
+    private Instant lastHeartbeatAt;
+
     @OneToMany(mappedBy = "node", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<DiscoveredService> services = new ArrayList<>();
 
@@ -104,6 +107,14 @@ public class ManagedNode {
 
     public void setLastSeenAt(Instant lastSeenAt) {
         this.lastSeenAt = lastSeenAt;
+    }
+
+    public Instant getLastHeartbeatAt() {
+        return lastHeartbeatAt;
+    }
+
+    public void setLastHeartbeatAt(Instant lastHeartbeatAt) {
+        this.lastHeartbeatAt = lastHeartbeatAt;
     }
 
     public List<DiscoveredService> getServices() {

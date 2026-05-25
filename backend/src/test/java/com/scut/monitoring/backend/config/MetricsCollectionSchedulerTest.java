@@ -19,7 +19,8 @@ class MetricsCollectionSchedulerTest {
     @Test
     void cleanupOldSnapshotsShouldDeleteSnapshotsOlderThanRetentionWindow() {
         when(nodeRegistryService.cleanupOldSnapshots(org.mockito.ArgumentMatchers.any(Instant.class))).thenReturn(5);
-        MetricsCollectionScheduler scheduler = new MetricsCollectionScheduler(nodeRegistryService, 30);
+        when(nodeRegistryService.cleanupOldNodeMetrics(org.mockito.ArgumentMatchers.any(Instant.class))).thenReturn(10);
+        MetricsCollectionScheduler scheduler = new MetricsCollectionScheduler(nodeRegistryService, 30, 7);
 
         Instant before = Instant.now();
         scheduler.cleanupOldSnapshots();
@@ -27,10 +28,20 @@ class MetricsCollectionSchedulerTest {
 
         ArgumentCaptor<Instant> cutoffCaptor = ArgumentCaptor.forClass(Instant.class);
         verify(nodeRegistryService).cleanupOldSnapshots(cutoffCaptor.capture());
+        verify(nodeRegistryService).cleanupOldNodeMetrics(org.mockito.ArgumentMatchers.any(Instant.class));
 
         Duration elapsedToBefore = Duration.between(cutoffCaptor.getValue(), before);
         Duration elapsedToAfter = Duration.between(cutoffCaptor.getValue(), after);
         assertThat(elapsedToBefore.toDays()).isBetween(29L, 31L);
         assertThat(elapsedToAfter.toDays()).isBetween(29L, 31L);
+    }
+
+    @Test
+    void startupBackfillShouldDelegateToNodeRegistryService() {
+        MetricsCollectionScheduler scheduler = new MetricsCollectionScheduler(nodeRegistryService, 30, 7);
+
+        scheduler.backfillMissingLastHeartbeatAt();
+
+        verify(nodeRegistryService).backfillMissingLastHeartbeatAt();
     }
 }
