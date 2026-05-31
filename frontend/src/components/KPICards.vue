@@ -33,7 +33,7 @@
       </div>
       <div class="kpi-value">{{ data.nodes.warning }}</div>
       <p class="kpi-subtitle">
-        <span v-if="data.nodes.warning > 0" class="alert">存在高负载</span>
+        <span v-if="data.nodes.warning > 0" class="alert">存在告警</span>
         <span v-else class="success">无异常</span>
       </p>
     </article>

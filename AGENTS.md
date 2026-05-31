@@ -35,7 +35,8 @@ DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0 docker compose --profile observabil
 
 - **Backend (Java/Maven):** `docker compose exec backend mvn -q test` — uses H2 in-memory DB for tests, no MySQL needed.
 - **Agent (Go):** `cd agent && go test ./...` — Go 1.22+ with toolchain auto-download to 1.23.
-- **Frontend build:** `docker compose exec frontend npm run build` — no dedicated lint/test scripts; `vite build` validates compilation.
+- **Frontend (Vue/Vitest):** `docker compose exec frontend npm test` — runs component/unit tests.
+- **Frontend build:** `docker compose exec frontend npm run build` — validates Vite production compilation.
 - **Smoke test:** `bash tests/smoke-test.sh` — requires all profiles (observability + nodes) running.
 
 ### API notes

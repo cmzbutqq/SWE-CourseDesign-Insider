@@ -301,6 +301,7 @@ class NodeRegistryServiceTest {
         ManagedNode offlineNode = createNode("db-node", "OFFLINE");
         when(managedNodeRepository.findAll()).thenReturn(List.of(onlineNode, warningNode, offlineNode));
         when(discoveredServiceRepository.count()).thenReturn(0L);
+        when(discoveredServiceRepository.findAbnormalServicesWithNode()).thenReturn(List.of());
 
         var response = nodeRegistryService.overview();
 
@@ -318,6 +319,7 @@ class NodeRegistryServiceTest {
         timedOutNode.setLastHeartbeatAt(Instant.now().minusSeconds(120));
         when(managedNodeRepository.findAll()).thenReturn(List.of(timedOutNode));
         when(discoveredServiceRepository.count()).thenReturn(0L);
+        when(discoveredServiceRepository.findAbnormalServicesWithNode()).thenReturn(List.of());
 
         var response = nodeRegistryService.overview();
 
@@ -336,6 +338,7 @@ class NodeRegistryServiceTest {
         waitingNode.setLastHeartbeatAt(null);
         when(managedNodeRepository.findAll()).thenReturn(List.of(waitingNode));
         when(discoveredServiceRepository.count()).thenReturn(0L);
+        when(discoveredServiceRepository.findAbnormalServicesWithNode()).thenReturn(List.of());
 
         var response = nodeRegistryService.overview();
 
@@ -350,11 +353,14 @@ class NodeRegistryServiceTest {
     @Test
     void overviewShouldCountServicesWithoutMetricsPathAsAbnormalAlerts() {
         ManagedNode middlewareNode = createNode("middleware-node", "ONLINE");
-        middlewareNode.getServices().add(createService(middlewareNode, "nginx", "NGINX", null));
-        middlewareNode.getServices().add(createService(middlewareNode, "redis", "REDIS", " "));
+        DiscoveredService nginx = createService(middlewareNode, "nginx", "NGINX", null);
+        DiscoveredService redis = createService(middlewareNode, "redis", "REDIS", " ");
+        middlewareNode.getServices().add(nginx);
+        middlewareNode.getServices().add(redis);
         middlewareNode.getServices().add(createService(middlewareNode, "node-exporter", "NODE_EXPORTER", "/metrics"));
         when(managedNodeRepository.findAll()).thenReturn(List.of(middlewareNode));
         when(discoveredServiceRepository.count()).thenReturn(3L);
+        when(discoveredServiceRepository.findAbnormalServicesWithNode()).thenReturn(List.of(nginx, redis));
 
         var response = nodeRegistryService.overview();
 
@@ -409,6 +415,7 @@ class NodeRegistryServiceTest {
     void saveMetricsSnapshotShouldNeverPersistNegativeHealthyServices() {
         when(managedNodeRepository.findAll()).thenReturn(List.of());
         when(discoveredServiceRepository.count()).thenReturn(0L);
+        when(discoveredServiceRepository.countAbnormalServices()).thenReturn(0L);
 
         nodeRegistryService.saveMetricsSnapshot();
 
@@ -429,6 +436,7 @@ class NodeRegistryServiceTest {
         middlewareNode.getServices().add(createService(middlewareNode, "node-exporter", "NODE_EXPORTER", "/metrics"));
         when(managedNodeRepository.findAll()).thenReturn(List.of(middlewareNode));
         when(discoveredServiceRepository.count()).thenReturn(2L);
+        when(discoveredServiceRepository.countAbnormalServices()).thenReturn(1L);
 
         nodeRegistryService.saveMetricsSnapshot();
 

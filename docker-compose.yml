@@ -46,7 +46,7 @@ services:
       - monitoring-net
 
   frontend:
-    image: node:20-alpine
+    image: node:22-alpine
     working_dir: /workspace/frontend
     command: >
       sh -c "npm install &&
