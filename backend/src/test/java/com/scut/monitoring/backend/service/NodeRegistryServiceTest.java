@@ -3,6 +3,7 @@ package com.scut.monitoring.backend.service;
 import com.scut.monitoring.backend.dto.AgentRegisterRequest;
 import com.scut.monitoring.backend.dto.DiscoveredServicePayload;
 import com.scut.monitoring.backend.dto.HeartbeatRequest;
+import com.scut.monitoring.backend.model.DiscoveredService;
 import com.scut.monitoring.backend.model.HeartbeatEvent;
 import com.scut.monitoring.backend.model.ManagedNode;
 import com.scut.monitoring.backend.model.MetricsSnapshot;
@@ -347,6 +348,32 @@ class NodeRegistryServiceTest {
     }
 
     @Test
+    void overviewShouldCountServicesWithoutMetricsPathAsAbnormalAlerts() {
+        ManagedNode middlewareNode = createNode("middleware-node", "ONLINE");
+        middlewareNode.getServices().add(createService(middlewareNode, "nginx", "NGINX", null));
+        middlewareNode.getServices().add(createService(middlewareNode, "redis", "REDIS", " "));
+        middlewareNode.getServices().add(createService(middlewareNode, "node-exporter", "NODE_EXPORTER", "/metrics"));
+        when(managedNodeRepository.findAll()).thenReturn(List.of(middlewareNode));
+        when(discoveredServiceRepository.count()).thenReturn(3L);
+
+        var response = nodeRegistryService.overview();
+
+        assertThat(response.services().total()).isEqualTo(3);
+        assertThat(response.services().healthy()).isEqualTo(1);
+        assertThat(response.services().abnormal()).isEqualTo(2);
+        assertThat(response.unresolvedAlerts()).isEqualTo(2);
+        assertThat(response.anomalies().services())
+                .extracting(service -> service.serviceName())
+                .containsExactly("nginx", "redis");
+        assertThat(response.anomalies().services())
+                .allSatisfy(service -> {
+                    assertThat(service.status()).isEqualTo("ABNORMAL");
+                    assertThat(service.errorType()).isEqualTo("NO_METRICS_PATH");
+                    assertThat(service.nodeName()).isEqualTo("middleware-node");
+                });
+    }
+
+    @Test
     void listNodesShouldExposeLastSeenAndLastHeartbeatSeparately() {
         ManagedNode waitingNode = createNode("app-node", "ONLINE");
         Instant lastSeenAt = Instant.now().minusSeconds(30);
@@ -393,6 +420,26 @@ class NodeRegistryServiceTest {
         assertThat(snapshot.getAbnormalServices()).isGreaterThanOrEqualTo(0);
         assertThat(snapshot.getHealthyServices()).isGreaterThanOrEqualTo(0);
         assertThat(snapshot.getHealthyServices()).isLessThanOrEqualTo(snapshot.getTotalServices());
+    }
+
+    @Test
+    void saveMetricsSnapshotShouldPersistAbnormalServiceCounts() {
+        ManagedNode middlewareNode = createNode("middleware-node", "ONLINE");
+        middlewareNode.getServices().add(createService(middlewareNode, "mysql", "MYSQL", null));
+        middlewareNode.getServices().add(createService(middlewareNode, "node-exporter", "NODE_EXPORTER", "/metrics"));
+        when(managedNodeRepository.findAll()).thenReturn(List.of(middlewareNode));
+        when(discoveredServiceRepository.count()).thenReturn(2L);
+
+        nodeRegistryService.saveMetricsSnapshot();
+
+        ArgumentCaptor<MetricsSnapshot> snapshotCaptor = ArgumentCaptor.forClass(MetricsSnapshot.class);
+        verify(metricsSnapshotRepository).save(snapshotCaptor.capture());
+        MetricsSnapshot snapshot = snapshotCaptor.getValue();
+
+        assertThat(snapshot.getTotalServices()).isEqualTo(2);
+        assertThat(snapshot.getHealthyServices()).isEqualTo(1);
+        assertThat(snapshot.getAbnormalServices()).isEqualTo(1);
+        assertThat(snapshot.getUnresolvedAlerts()).isEqualTo(1);
     }
 
     @Test
@@ -491,5 +538,16 @@ class NodeRegistryServiceTest {
         node.setLastSeenAt(Instant.now());
         node.setLastHeartbeatAt(Instant.now());
         return node;
+    }
+
+    private DiscoveredService createService(ManagedNode node, String serviceName, String serviceType, String metricsPath) {
+        DiscoveredService service = new DiscoveredService();
+        service.setNode(node);
+        service.setServiceName(serviceName);
+        service.setServiceType(serviceType);
+        service.setPort(80);
+        service.setProcessName(serviceName);
+        service.setMetricsPath(metricsPath);
+        return service;
     }
 }

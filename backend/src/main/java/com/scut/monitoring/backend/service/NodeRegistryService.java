@@ -37,6 +37,7 @@ import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Stream;
 
 @Service
 public class NodeRegistryService {
@@ -246,6 +247,8 @@ public class NodeRegistryService {
                 .filter(node -> "WARNING".equalsIgnoreCase(effectiveStatus(node, now)))
                 .count();
         long offlineCount = allNodes.size() - onlineCount - warningCount;
+        long abnormalServices = countAbnormalServices(allNodes);
+        long healthyServices = Math.max(0, totalServices - abnormalServices);
 
         CounterGroupDTO nodesCounter = new CounterGroupDTO(
                 allNodes.size(),
@@ -261,8 +264,8 @@ public class NodeRegistryService {
                 0,
                 0,
                 0,
-                totalServices,
-                0
+                healthyServices,
+                abnormalServices
         );
 
         AnomaliesDTO anomalies = buildAnomalies(allNodes, now);
@@ -276,7 +279,7 @@ public class NodeRegistryService {
         return new OverviewResponse(
                 nodesCounter,
                 servicesCounter,
-                offlineCount + warningCount,
+                offlineCount + warningCount + abnormalServices,
                 anomalies,
                 quickLinks
         );
@@ -298,9 +301,36 @@ public class NodeRegistryService {
                 .sorted(Comparator.comparingLong(AnomalyNodeDTO::durationSeconds).reversed())
                 .toList();
 
-        List<AnomalyServiceDTO> anomalyServices = List.of();
+        List<AnomalyServiceDTO> anomalyServices = allNodes.stream()
+                .flatMap(this::abnormalServiceStream)
+                .sorted(Comparator
+                        .comparing((DiscoveredService service) -> service.getNode().getNodeName())
+                        .thenComparing(DiscoveredService::getServiceName))
+                .map(service -> new AnomalyServiceDTO(
+                        service.getId(),
+                        service.getServiceName(),
+                        "ABNORMAL",
+                        "NO_METRICS_PATH",
+                        service.getNode().getNodeName()
+                ))
+                .toList();
 
         return new AnomaliesDTO(anomalyNodes, anomalyServices);
+    }
+
+    private long countAbnormalServices(List<ManagedNode> nodes) {
+        return nodes.stream()
+                .flatMap(this::abnormalServiceStream)
+                .count();
+    }
+
+    private Stream<DiscoveredService> abnormalServiceStream(ManagedNode node) {
+        return node.getServices().stream()
+                .filter(this::isAbnormalService);
+    }
+
+    private boolean isAbnormalService(DiscoveredService service) {
+        return service.getMetricsPath() == null || service.getMetricsPath().isBlank();
     }
 
     private String buildNodeAnomalyReason(ManagedNode node, Instant now) {
@@ -494,7 +524,7 @@ public class NodeRegistryService {
                 .count();
         long offlineCount = allNodes.size() - onlineCount - warningNodes;
 
-        long abnormalServices = 0;
+        long abnormalServices = countAbnormalServices(allNodes);
         long healthyServices = Math.max(0, totalServices - abnormalServices);
         long unresolvedAlerts = offlineCount + warningNodes + abnormalServices;
 

@@ -16,6 +16,9 @@
         <span v-if="data.nodes.offline > 0" class="alert">
           ⚠ {{ data.nodes.offline }} 离线
         </span>
+        <span v-else-if="data.nodes.warning > 0" class="alert">
+          ⚠ {{ data.nodes.warning }} 告警
+        </span>
         <span v-else class="success">✓ 全部在线</span>
       </p>
     </article>
