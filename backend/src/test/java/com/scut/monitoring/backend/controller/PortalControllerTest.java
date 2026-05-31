@@ -1,6 +1,7 @@
 package com.scut.monitoring.backend.controller;
 
 import com.scut.monitoring.backend.service.NodeRegistryService;
+import jakarta.persistence.EntityNotFoundException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -31,5 +32,15 @@ class PortalControllerTest {
 
         mockMvc.perform(get("/api/trends").param("hours", "1e308"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void nodeDetailShouldReturnNotFoundWhenNodeDoesNotExist() throws Exception {
+        doThrow(new EntityNotFoundException("Node not found: 999"))
+                .when(nodeRegistryService)
+                .getNode(999L);
+
+        mockMvc.perform(get("/api/nodes/999"))
+                .andExpect(status().isNotFound());
     }
 }
