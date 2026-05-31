@@ -30,4 +30,17 @@ describe('KPICards', () => {
     expect(onlineCardText).toContain('2 告警');
     expect(onlineCardText).not.toContain('全部在线');
   });
+
+  it('uses generic alert copy for warning nodes instead of high load only', () => {
+    const wrapper = mount(KPICards, {
+      props: {
+        data: baseOverview
+      }
+    });
+
+    const warningCardText = wrapper.findAll('.kpi-card')[1].text();
+
+    expect(warningCardText).toContain('存在告警');
+    expect(warningCardText).not.toContain('存在高负载');
+  });
 });
