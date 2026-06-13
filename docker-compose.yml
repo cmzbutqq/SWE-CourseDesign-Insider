@@ -24,13 +24,14 @@ services:
     image: maven:3.9-eclipse-temurin-21
     working_dir: /workspace/backend
     command: >
-      sh -c "mvn -q -DskipTests dependency:go-offline &&
-      mvn spring-boot:run"
+      sh -c "sh /workspace/infra/maven/mvn-with-mirror.sh -q -DskipTests dependency:go-offline &&
+      sh /workspace/infra/maven/mvn-with-mirror.sh spring-boot:run"
     environment:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-monitoring}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
       SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:-monitoring}
       SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:-monitoring}
       SERVER_PORT: 8080
+      MAVEN_MIRROR_URL: ${MAVEN_MIRROR_URL:-https://maven.aliyun.com/repository/public}
       MONITORING_GRAFANA_BASE_URL: ${PUBLIC_SCHEME:-http}://${PUBLIC_HOST:-localhost}:${GRAFANA_PORT:-13000}
       MONITORING_SKYWALKING_BASE_URL: ${PUBLIC_SCHEME:-http}://${PUBLIC_HOST:-localhost}:${SKYWALKING_UI_PORT:-18082}
       MONITORING_PROMETHEUS_BASE_URL: ${PUBLIC_SCHEME:-http}://${PUBLIC_HOST:-localhost}:${PROMETHEUS_PORT:-19090}
@@ -52,6 +53,7 @@ services:
       sh -c "npm install &&
       npm run dev -- --host 0.0.0.0 --port 5173"
     environment:
+      NPM_CONFIG_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
       VITE_API_BASE_URL: /api
       VITE_PROXY_TARGET: http://backend:8080
     ports:
@@ -72,6 +74,7 @@ services:
       sleep infinity"
     environment:
       AGENT_SERVER_URL: http://backend:8080/api
+      GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
     volumes:
       - ./:/workspace
       - agent-go-cache:/go/pkg/mod
@@ -140,6 +143,9 @@ services:
     build:
       context: .
       dockerfile: demo-nodes/app-node/Dockerfile
+      args:
+        GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
+        MAVEN_MIRROR_URL: ${MAVEN_MIRROR_URL:-https://maven.aliyun.com/repository/public}
     environment:
       AGENT_NODE_NAME: app-node
       AGENT_SERVER_URL: http://backend:8080/api
@@ -156,6 +162,8 @@ services:
     build:
       context: .
       dockerfile: demo-nodes/middleware-node/Dockerfile
+      args:
+        GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
     environment:
       AGENT_NODE_NAME: middleware-node
       AGENT_SERVER_URL: http://backend:8080/api

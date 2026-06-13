@@ -1,4 +1,7 @@
+ARG GOPROXY=https://goproxy.cn,direct
 FROM golang:1.23 AS agent-builder
+ARG GOPROXY
+ENV GOPROXY=${GOPROXY}
 WORKDIR /src/agent
 COPY agent/go.mod ./
 RUN go mod download
