@@ -1,4 +1,8 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:18081/api";
+export function resolveApiBaseUrl(env = import.meta.env) {
+  return env.VITE_API_BASE_URL || "/api";
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
 
 async function fetchJson(path) {
   const response = await fetch(`${API_BASE_URL}${path}`);

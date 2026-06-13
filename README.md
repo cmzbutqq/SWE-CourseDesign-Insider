@@ -57,6 +57,14 @@
 
 说明：`http://localhost:18081/api` 根路径未单独定义路由，返回 `404` 属于正常现象，请访问上述具体接口（如 `/api/overview`、`/api/nodes`、`/api/services`）。
 
+## 自动部署
+
+- `main` 更新后，`.github/workflows/deploy-main.yml` 会先跑校验，再通过 SSH 到服务器执行 `deploy/deploy-main.sh`
+- 服务器推荐部署目录：`/opt/scut-monitoring`
+- 服务器初始化和 SSH 密钥改造见 [deploy/server-bootstrap.md](deploy/server-bootstrap.md)
+- 给新 Agent 的部署提示词见 [deploy/remote-agent-prompt.md](deploy/remote-agent-prompt.md)
+- 公网直连前端时，推荐把服务器 `.env` 里的 `PUBLIC_HOST` 设置为公网 IP，`FRONTEND_PORT` 设为 `80`
+
 ## 常用命令
 
 ```bash

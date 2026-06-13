@@ -31,9 +31,9 @@ services:
       SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:-monitoring}
       SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:-monitoring}
       SERVER_PORT: 8080
-      MONITORING_GRAFANA_BASE_URL: http://localhost:${GRAFANA_PORT:-13000}
-      MONITORING_SKYWALKING_BASE_URL: http://localhost:${SKYWALKING_UI_PORT:-18082}
-      MONITORING_PROMETHEUS_BASE_URL: http://localhost:${PROMETHEUS_PORT:-19090}
+      MONITORING_GRAFANA_BASE_URL: ${PUBLIC_SCHEME:-http}://${PUBLIC_HOST:-localhost}:${GRAFANA_PORT:-13000}
+      MONITORING_SKYWALKING_BASE_URL: ${PUBLIC_SCHEME:-http}://${PUBLIC_HOST:-localhost}:${SKYWALKING_UI_PORT:-18082}
+      MONITORING_PROMETHEUS_BASE_URL: ${PUBLIC_SCHEME:-http}://${PUBLIC_HOST:-localhost}:${PROMETHEUS_PORT:-19090}
     ports:
       - "${BACKEND_PORT:-18081}:8080"
     volumes:
@@ -52,7 +52,8 @@ services:
       sh -c "npm install &&
       npm run dev -- --host 0.0.0.0 --port 5173"
     environment:
-      VITE_API_BASE_URL: http://localhost:${BACKEND_PORT:-18081}/api
+      VITE_API_BASE_URL: /api
+      VITE_PROXY_TARGET: http://backend:8080
     ports:
       - "${FRONTEND_PORT:-15173}:5173"
     volumes:
@@ -97,8 +98,8 @@ services:
   grafana:
     image: grafana/grafana:11.2.2
     environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-monitoring-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-monitoring-change-me}
       GF_USERS_ALLOW_SIGN_UP: "false"
     ports:
       - "${GRAFANA_PORT:-13000}:3000"
