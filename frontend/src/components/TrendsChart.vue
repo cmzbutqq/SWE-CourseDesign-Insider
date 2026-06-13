@@ -5,7 +5,7 @@
         <h3>系统趋势分析</h3>
         <p class="trends-subtitle">展示节点在线状况与服务健康趋势，帮助判断系统是否稳定运行</p>
       </div>
-      <span v-if="trendsData" class="time-range-label">
+      <span v-if="trendsData && !error" class="time-range-label">
         时间范围：{{ trendsData.timeRange }}
       </span>
     </div>
@@ -24,7 +24,7 @@
     </div>
 
     <!-- 异常提示横幅 -->
-    <div v-if="hasAnomalies && !isLoading" class="anomaly-banner">
+    <div v-if="hasAnomalies && !isLoading && !error" class="anomaly-banner">
       ⚠ 检测到异常：{{ anomalySummary }}，请关注下方趋势图
     </div>
 
@@ -58,7 +58,7 @@
 
     <!-- 图表说明 -->
     <div v-if="hasData && !isLoading && !error" class="chart-legend-note">
-      <span>📌 节点在线数越高越好；离线节点、异常服务、未处理告警越低越好</span>
+      <span>📌 节点在线数越高越好；离线节点、异常服务、未处理告警越低越好；识别服务通常应保持稳定</span>
     </div>
 
     <!-- 无数据状态 -->
@@ -89,6 +89,7 @@ const error = ref('');
 const chartContainer = ref(null);
 const trendsData = ref(null);
 let chart = null;
+const ALERT_METRIC_NAMES = new Set(['离线节点', '异常服务', '未处理告警']);
 
 const handleWindowResize = () => { if (chart) chart.resize(); };
 
@@ -97,17 +98,15 @@ const hasData = computed(() => trendsData.value && trendsData.value.trends.lengt
 // 异常判断：离线节点 > 0 或 异常服务 > 0 或 未处理告警 > 0
 const hasAnomalies = computed(() => {
   if (!trendsData.value?.trends) return false;
-  return trendsData.value.trends.some(t =>
-    ['离线节点', '异常服务', '未处理告警'].includes(t.metricName) && Number(t.currentValue) > 0
-  );
+  return trendsData.value.trends.some((trend) => isAlertingTrend(trend));
 });
 
 const anomalySummary = computed(() => {
   if (!trendsData.value?.trends) return '';
   const parts = [];
-  trendsData.value.trends.forEach(t => {
-    if (['离线节点', '异常服务', '未处理告警'].includes(t.metricName) && Number(t.currentValue) > 0) {
-      parts.push(`${t.metricName} ${t.currentValue}${t.unit}`);
+  trendsData.value.trends.forEach((trend) => {
+    if (isAlertingTrend(trend)) {
+      parts.push(`${trend.metricName} ${trend.currentValue}${trend.unit}`);
     }
   });
   return parts.join('、');
@@ -137,10 +136,8 @@ function metricDesc(name) {
 }
 
 function getMetricCardClass(trend) {
-  const val = Number(trend.currentValue);
-  const name = trend.metricName;
-  if (['离线节点', '异常服务', '未处理告警'].includes(name) && val > 0) return 'card-danger';
-  if (name === '在线节点' && val > 0) return 'card-good';
+  if (isAlertingTrend(trend)) return 'card-danger';
+  if (trend.metricName === '在线节点' && Number(trend.currentValue) > 0) return 'card-good';
   return 'card-neutral';
 }
 
@@ -157,6 +154,7 @@ async function loadTrendData(hours) {
   selectedHours.value = hours;
   isLoading.value = true;
   error.value = '';
+  trendsData.value = null;
   try {
     const data = await fetchTrends(hours);
     trendsData.value = data;
@@ -165,6 +163,7 @@ async function loadTrendData(hours) {
     await nextTick();
     renderChart(data);
   } catch (err) {
+    trendsData.value = null;
     error.value = err.message || '加载趋势数据失败';
   } finally {
     isLoading.value = false;
@@ -188,9 +187,7 @@ function renderChart(data) {
 
   const series = data.trends.map(trend => {
     const color = COLORS[trend.metricName] || '#FAAD14';
-    const isAnomalyMetric = ['离线节点', '异常服务', '未处理告警'].includes(trend.metricName);
-    const currentVal = Number(trend.currentValue);
-    const isAlerting = isAnomalyMetric && currentVal > 0;
+    const isAlerting = isAlertingTrend(trend);
 
     return {
       name: trend.metricName,
@@ -202,7 +199,7 @@ function renderChart(data) {
       lineStyle: {
         width: isAlerting ? 2.5 : 2,
         color,
-        type: isAnomalyMetric ? 'dashed' : 'solid'
+        type: isAlerting ? 'dashed' : 'solid'
       },
       itemStyle: { color },
       areaStyle: isAlerting ? {
@@ -279,6 +276,10 @@ function renderChart(data) {
 
   chart.setOption(option, true);
   chart.resize();
+}
+
+function isAlertingTrend(trend) {
+  return ALERT_METRIC_NAMES.has(trend.metricName) && Number(trend.currentValue) > 0;
 }
 
 onMounted(() => {
