@@ -7,6 +7,7 @@ public record ServiceSummaryResponse(
         Integer port,
         String processName,
         String metricsPath,
+        Long nodeId,
         String nodeName
 ) {
 }

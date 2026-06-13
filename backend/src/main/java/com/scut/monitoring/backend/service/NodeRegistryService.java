@@ -491,6 +491,7 @@ public class NodeRegistryService {
                 service.getPort(),
                 service.getProcessName(),
                 service.getMetricsPath(),
+                service.getNode().getId(),
                 service.getNode().getNodeName()
         );
     }

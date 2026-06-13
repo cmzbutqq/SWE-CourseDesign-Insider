@@ -16,6 +16,7 @@ import com.scut.monitoring.backend.repository.NodeMetricsRepository;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
@@ -393,6 +394,22 @@ class NodeRegistryServiceTest {
         assertThat(response.get(0).status()).isEqualTo("WARNING");
         assertThat(response.get(0).lastSeenAt()).isEqualTo(lastSeenAt);
         assertThat(response.get(0).lastHeartbeatAt()).isNull();
+    }
+
+    @Test
+    void listServicesShouldExposeNodeIdForNodeDetailNavigation() throws Exception {
+        ManagedNode node = createNode("app-node", "ONLINE");
+        ReflectionTestUtils.setField(node, "id", 42L);
+        DiscoveredService service = createService(node, "nginx", "NGINX", "/metrics");
+
+        when(discoveredServiceRepository.findAllByOrderByServiceTypeAscServiceNameAsc()).thenReturn(List.of(service));
+
+        var response = nodeRegistryService.listServices();
+
+        assertThat(response).hasSize(1);
+        Object nodeId = response.get(0).getClass().getMethod("nodeId").invoke(response.get(0));
+        assertThat(nodeId).isEqualTo(42L);
+        assertThat(response.get(0).nodeName()).isEqualTo("app-node");
     }
 
     @Test
