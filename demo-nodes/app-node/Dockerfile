@@ -1,16 +1,23 @@
+ARG GOPROXY=https://goproxy.cn,direct
 FROM golang:1.23 AS agent-builder
+ARG GOPROXY
+ENV GOPROXY=${GOPROXY}
 WORKDIR /src/agent
 COPY agent/go.mod ./
 RUN go mod download
 COPY agent/ ./
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/monitor-agent ./cmd/agent
 
+ARG MAVEN_MIRROR_URL=https://maven.aliyun.com/repository/public
 FROM maven:3.9-eclipse-temurin-21 AS sample-builder
+ARG MAVEN_MIRROR_URL
+ENV MAVEN_MIRROR_URL=${MAVEN_MIRROR_URL}
 WORKDIR /src/demo-apps/sample-service
+COPY infra/maven/mvn-with-mirror.sh /usr/local/bin/mvn-with-mirror.sh
 COPY demo-apps/sample-service/pom.xml ./
-RUN mvn -q -DskipTests dependency:go-offline
+RUN sh /usr/local/bin/mvn-with-mirror.sh -q -DskipTests dependency:go-offline
 COPY demo-apps/sample-service/ ./
-RUN mvn -q -DskipTests package
+RUN sh /usr/local/bin/mvn-with-mirror.sh -q -DskipTests package
 
 FROM prom/node-exporter:v1.8.2 AS node-exporter
 

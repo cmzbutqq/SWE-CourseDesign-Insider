@@ -261,6 +261,8 @@ grep -E '^(PUBLIC_SCHEME|PUBLIC_HOST|FRONTEND_PORT|GRAFANA_ADMIN_PASSWORD)=' .en
 首次部署前，先手动执行一次。这里要故意用 `deploy` 用户执行，和 GitHub Actions 未来的执行身份保持一致：
 
 ```bash
+chown -R deploy:deploy /opt/scut-monitoring
+sudo -u deploy test -w /opt/scut-monitoring/.env
 sudo -u deploy -H bash -lc 'cd /opt/scut-monitoring && bash deploy/deploy-main.sh'
 ```
 
