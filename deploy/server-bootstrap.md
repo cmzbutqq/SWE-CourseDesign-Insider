@@ -391,7 +391,6 @@ git rev-parse --short HEAD
 ## 14. 公网访问地址
 
 按这份文档执行完后，默认访问地址应为：
-
 - 前端：首页 `http://服务器公网IP/`
 - 后端概览接口：`http://服务器公网IP:18081/api/overview`
 - Grafana：`http://服务器公网IP:13000`
