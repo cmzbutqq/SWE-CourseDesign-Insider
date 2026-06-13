@@ -260,7 +260,20 @@ grep -E '^(PUBLIC_SCHEME|PUBLIC_HOST|FRONTEND_PORT|GRAFANA_ADMIN_PASSWORD)=' .en
 
 首次部署前，先手动执行一次。这里要故意用 `deploy` 用户执行，和 GitHub Actions 未来的执行身份保持一致：
 
+如果这不是第一次尝试，而是前一次部署失败后的重试，先把完整 profile 的旧容器清干净。不要只执行 `docker compose down --remove-orphans`，因为那不会下掉 `observability` 和 `nodes` profile 里的容器。
+
+先执行：
+
 ```bash
+cd /opt/scut-monitoring
+docker compose --profile observability --profile nodes down --remove-orphans
+```
+
+然后再执行：
+
+```bash
+chown -R deploy:deploy /opt/scut-monitoring
+sudo -u deploy test -w /opt/scut-monitoring/.env
 sudo -u deploy -H bash -lc 'cd /opt/scut-monitoring && bash deploy/deploy-main.sh'
 ```
 
@@ -378,7 +391,6 @@ git rev-parse --short HEAD
 ## 14. 公网访问地址
 
 按这份文档执行完后，默认访问地址应为：
-
 - 前端：首页 `http://服务器公网IP/`
 - 后端概览接口：`http://服务器公网IP:18081/api/overview`
 - Grafana：`http://服务器公网IP:13000`
