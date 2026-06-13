@@ -33,7 +33,12 @@
         class="group-block"
       >
         <!-- 分组标题，可折叠 -->
-        <div class="group-header" @click="toggleGroup(type)">
+        <button
+          type="button"
+          class="group-header"
+          :aria-expanded="String(!collapsed[type])"
+          @click="toggleGroup(type)"
+        >
           <span class="group-toggle">{{ collapsed[type] ? "▶" : "▼" }}</span>
           <span :class="['type-tag', typeClass(type)]">{{ type }}</span>
           <span class="group-count">{{ group.length }} 个</span>
@@ -41,7 +46,7 @@
             ⚠ {{ unhealthyCount(group) }} 个指标不可用
           </span>
           <span v-else class="group-ok">✓ 全部正常</span>
-        </div>
+        </button>
 
         <!-- 分组内容 -->
         <article class="panel table-panel" v-show="!collapsed[type]">
@@ -68,8 +73,8 @@
                 </td>
                 <td class="mono">{{ svc.port || "-" }}</td>
                 <td>
-                  <span v-if="svc.metricsPath" class="metrics-ok">
-                    <span class="dot dot-ok"></span>{{ svc.metricsPath }}
+                  <span v-if="hasMetricsPath(svc)" class="metrics-ok">
+                    <span class="dot dot-ok"></span>{{ svc.metricsPath.trim() }}
                   </span>
                   <span v-else class="metrics-na">
                     <span class="dot dot-warn"></span>未配置
@@ -143,12 +148,16 @@ const groupedServices = computed(() => {
 
 // 没有 metricsPath 的服务数量（汇总用）
 const noMetricsCount = computed(() =>
-  services.value.filter((s) => !s.metricsPath).length
+  services.value.filter((service) => !hasMetricsPath(service)).length
 );
 
 // 某分组内没有 metricsPath 的数量
 function unhealthyCount(group) {
-  return group.filter((s) => !s.metricsPath).length;
+  return group.filter((service) => !hasMetricsPath(service)).length;
+}
+
+function hasMetricsPath(service) {
+  return Boolean(service.metricsPath?.trim());
 }
 
 function toggleGroup(type) {
@@ -207,6 +216,7 @@ onMounted(load);
   cursor: pointer;
   user-select: none;
   font-size: 0.875rem;
+  width: 100%;
 }
 .group-header:hover { background: #f1f5f9; }
 
