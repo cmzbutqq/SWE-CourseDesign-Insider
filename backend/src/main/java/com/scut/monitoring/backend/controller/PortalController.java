@@ -3,6 +3,7 @@ package com.scut.monitoring.backend.controller;
 import com.scut.monitoring.backend.dto.NodeDetailResponse;
 import com.scut.monitoring.backend.dto.NodeSummaryResponse;
 import com.scut.monitoring.backend.dto.OverviewResponse;
+import com.scut.monitoring.backend.dto.ServiceDetailResponse;
 import com.scut.monitoring.backend.dto.ServiceSummaryResponse;
 import com.scut.monitoring.backend.dto.TrendsResponse;
 import com.scut.monitoring.backend.service.NodeRegistryService;
@@ -46,6 +47,11 @@ public class PortalController {
     @GetMapping("/services")
     public List<ServiceSummaryResponse> services() {
         return nodeRegistryService.listServices();
+    }
+
+    @GetMapping("/services/{id}")
+    public ServiceDetailResponse serviceDetail(@PathVariable Long id) {
+        return nodeRegistryService.getService(id);
     }
 
     @GetMapping(value = "/trends", produces = "application/json;charset=UTF-8")
