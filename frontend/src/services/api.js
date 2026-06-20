@@ -36,6 +36,10 @@ export function fetchServices() {
   return fetchJson("/services");
 }
 
+export function fetchServiceDetail(id) {
+  return fetchJson(`/services/${id}`);
+}
+
 export function fetchTrends(hours = 1) {
   return fetchJson(`/trends?hours=${hours}`);
 }
