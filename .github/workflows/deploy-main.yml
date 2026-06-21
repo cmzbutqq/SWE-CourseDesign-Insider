@@ -73,12 +73,22 @@ jobs:
       - name: Run agent tests
         run: go test ./...
 
+  packaging-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify SkyWalking agent source configuration
+        run: bash tests/skywalking-agent-source-test.sh
+
   smoke-test:
     runs-on: ubuntu-latest
     needs:
       - frontend-build
       - backend-test
       - agent-test
+      - packaging-test
     timeout-minutes: 20
     steps:
       - name: Checkout

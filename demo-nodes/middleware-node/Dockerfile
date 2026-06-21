@@ -13,15 +13,17 @@ FROM nginx/nginx-prometheus-exporter:1.3.0 AS nginx-exporter
 FROM oliver006/redis_exporter:v1.67.0 AS redis-exporter
 
 ARG SKYWALKING_AGENT_VERSION=9.4.0
-FROM eclipse-temurin:21-jre-jammy AS skywalking-agent-source
-ARG SKYWALKING_AGENT_VERSION
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl ca-certificates \
-    && rm -rf /var/lib/apt/lists/* \
+ARG MAVEN_MIRROR_URL=https://maven.aliyun.com/repository/public
+FROM maven:3.9-eclipse-temurin-21 AS skywalking-agent-source
+ARG SKYWALKING_AGENT_VERSION=9.4.0
+ARG MAVEN_MIRROR_URL=https://maven.aliyun.com/repository/public
+ENV MAVEN_MIRROR_URL=${MAVEN_MIRROR_URL}
+COPY infra/maven/mvn-with-mirror.sh /usr/local/bin/mvn-with-mirror.sh
+RUN sh /usr/local/bin/mvn-with-mirror.sh -q -Dtransitive=false \
+    dependency:get -Dartifact=org.apache.skywalking:apm-agent:${SKYWALKING_AGENT_VERSION} \
     && mkdir -p /opt/skywalking \
-    && curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 \
-    "https://repo1.maven.org/maven2/org/apache/skywalking/apm-agent/${SKYWALKING_AGENT_VERSION}/apm-agent-${SKYWALKING_AGENT_VERSION}.jar" \
-    -o /opt/skywalking/skywalking-agent.jar
+    && cp /root/.m2/repository/org/apache/skywalking/apm-agent/${SKYWALKING_AGENT_VERSION}/apm-agent-${SKYWALKING_AGENT_VERSION}.jar \
+    /opt/skywalking/skywalking-agent.jar
 
 ARG MAVEN_MIRROR_URL=https://maven.aliyun.com/repository/public
 FROM maven:3.9-eclipse-temurin-21 AS middleware-builder
