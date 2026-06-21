@@ -176,6 +176,7 @@ services:
       dockerfile: demo-nodes/middleware-node/Dockerfile
       args:
         GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
+        MAVEN_MIRROR_URL: ${MAVEN_MIRROR_URL:-https://maven.aliyun.com/repository/public}
     environment:
       AGENT_NODE_NAME: middleware-node
       AGENT_SERVER_URL: http://backend:8080/api
