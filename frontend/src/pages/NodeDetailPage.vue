@@ -29,7 +29,7 @@
       <RiskSummary
         v-if="highRiskItems.length > 0"
         title="高风险服务"
-        description="以下服务缺少 metricsPath，建议优先补齐采集路径。"
+        description="以下服务缺少可抓取指标端点，建议优先补齐采集路径。"
         variant="list"
         tone="warn"
         :items="highRiskItems"
@@ -89,13 +89,14 @@
                 <th>服务名</th>
                 <th>类型</th>
                 <th>端口</th>
+                <th>指标端口</th>
                 <th>进程</th>
-                <th>metricsPath</th>
+                <th>抓取路径</th>
               </tr>
             </thead>
             <tbody>
               <tr v-if="node.services.length === 0">
-                <td colspan="5">暂无服务数据</td>
+                <td colspan="6">暂无服务数据</td>
               </tr>
               <tr v-for="service in node.services" :key="service.id">
                 <td>
@@ -110,6 +111,7 @@
                 </td>
                 <td>{{ service.serviceType || "-" }}</td>
                 <td>{{ service.port || "-" }}</td>
+                <td>{{ service.metricsPort ?? "-" }}</td>
                 <td>{{ service.processName || "-" }}</td>
                 <td>{{ service.metricsPath || "未配置" }}</td>
               </tr>
@@ -233,7 +235,7 @@ const rawGroups = computed(() => [
 const highRiskItems = computed(() =>
   node.highRiskServices.map((service) => ({
     title: service.serviceName || service.id,
-    detail: [service.serviceType || "-", service.port ? `端口 ${service.port}` : "", "缺少 metricsPath"]
+    detail: [service.serviceType || "-", service.port ? `端口 ${service.port}` : "", "缺少抓取路径"]
       .filter(Boolean)
       .join(" · "),
     tone: "warn",

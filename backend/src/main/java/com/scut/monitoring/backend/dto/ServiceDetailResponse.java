@@ -9,6 +9,7 @@ public record ServiceDetailResponse(
         Integer port,
         String processName,
         String metricsPath,
+        Integer metricsPort,
         Long nodeId,
         String nodeName,
         String nodeIpAddress,

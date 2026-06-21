@@ -6,6 +6,7 @@ type DiscoveredService struct {
 	Port        int    `json:"port"`
 	ProcessName string `json:"processName"`
 	MetricsPath string `json:"metricsPath,omitempty"`
+	MetricsPort int    `json:"metricsPort,omitempty"`
 }
 
 type RegisterPayload struct {

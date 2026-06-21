@@ -1,8 +1,12 @@
 package com.scut.monitoring.backend.controller;
 
 import com.scut.monitoring.backend.dto.QuickLinkDTO;
+import com.scut.monitoring.backend.dto.LatestTracePreviewDTO;
 import com.scut.monitoring.backend.dto.ServiceDetailResponse;
+import com.scut.monitoring.backend.dto.TraceSummaryItemDTO;
+import com.scut.monitoring.backend.dto.TracingSummaryResponse;
 import com.scut.monitoring.backend.service.NodeRegistryService;
+import com.scut.monitoring.backend.service.SkyWalkingQueryService;
 import jakarta.persistence.EntityNotFoundException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,6 +33,9 @@ class PortalControllerTest {
 
     @MockBean
     private NodeRegistryService nodeRegistryService;
+
+    @MockBean
+    private SkyWalkingQueryService skyWalkingQueryService;
 
     @Test
     void trendsShouldReturnBadRequestWhenServiceRejectsHours() throws Exception {
@@ -69,6 +76,7 @@ class PortalControllerTest {
                 8081,
                 "java",
                 null,
+                8081,
                 42L,
                 "app-node",
                 "172.20.0.10",
@@ -95,5 +103,39 @@ class PortalControllerTest {
                 .andExpect(jsonPath("$.metricsMissing").value(true))
                 .andExpect(jsonPath("$.quickLinks[0].name").value("Grafana"))
                 .andExpect(jsonPath("$.quickLinks[1].name").value("Prometheus"));
+    }
+
+    @Test
+    void tracingSummaryShouldReturnSkywalkingPayload() throws Exception {
+        when(skyWalkingQueryService.loadTracingSummary()).thenReturn(new TracingSummaryResponse(
+                List.of("sample-service", "middleware-service"),
+                List.of(new TraceSummaryItemDTO(
+                        "trace-1",
+                        List.of("GET:/api/demo-chain", "GET:/api/middleware/profile"),
+                        123,
+                        "2026-06-21 11:00",
+                        false
+                )),
+                new LatestTracePreviewDTO(
+                        "trace-1",
+                        "sample-service",
+                        "GET:/api/demo-chain",
+                        List.of("sample-service", "middleware-service"),
+                        List.of("mysql", "redis", "nginx"),
+                        8,
+                        123,
+                        "2026-06-21 11:00",
+                        false
+                )
+        ));
+
+        mockMvc.perform(get("/api/tracing/summary"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.serviceNames[0]").value("sample-service"))
+                .andExpect(jsonPath("$.traces[0].traceId").value("trace-1"))
+                .andExpect(jsonPath("$.traces[0].durationMs").value(123))
+                .andExpect(jsonPath("$.latestTrace.entryService").value("sample-service"))
+                .andExpect(jsonPath("$.latestTrace.serviceChain[1]").value("middleware-service"))
+                .andExpect(jsonPath("$.latestTrace.dependencyChain[0]").value("mysql"));
     }
 }

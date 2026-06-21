@@ -122,6 +122,7 @@ public class NodeRegistryService {
             service.setPort(servicePayload.port());
             service.setProcessName(processName);
             service.setMetricsPath(servicePayload.metricsPath());
+            service.setMetricsPort(servicePayload.metricsPort());
             syncedServices.add(service);
         }
 
@@ -366,7 +367,7 @@ public class NodeRegistryService {
                         service.getId(),
                         service.getServiceName(),
                         "ABNORMAL",
-                        "NO_METRICS_PATH",
+                        "NO_SCRAPE_ENDPOINT",
                         service.getNode().getNodeName()
                 ))
                 .toList();
@@ -549,6 +550,7 @@ public class NodeRegistryService {
                 service.getPort(),
                 service.getProcessName(),
                 normalizeMetricsPath(service.getMetricsPath()),
+                resolveMetricsPort(service),
                 node.getId(),
                 node.getNodeName(),
                 node.getIpAddress(),
@@ -577,10 +579,21 @@ public class NodeRegistryService {
 
     private String buildServiceInstanceLabel(DiscoveredService service) {
         ManagedNode node = service.getNode();
-        if (node == null || node.getNodeName() == null || node.getNodeName().isBlank() || service.getPort() == null) {
+        Integer metricsPort = resolveMetricsPort(service);
+        if (node == null || node.getNodeName() == null || node.getNodeName().isBlank() || metricsPort == null) {
             return null;
         }
-        return node.getNodeName().trim() + ":" + service.getPort();
+        return node.getNodeName().trim() + ":" + metricsPort;
+    }
+
+    private Integer resolveMetricsPort(DiscoveredService service) {
+        if (service.getMetricsPort() != null) {
+            return service.getMetricsPort();
+        }
+        if (service.getMetricsPath() != null && !service.getMetricsPath().isBlank()) {
+            return service.getPort();
+        }
+        return null;
     }
 
     private String normalizeMetricsPath(String metricsPath) {
@@ -601,7 +614,8 @@ public class NodeRegistryService {
                 service.getServiceType(),
                 service.getPort(),
                 service.getProcessName(),
-                service.getMetricsPath(),
+                normalizeMetricsPath(service.getMetricsPath()),
+                resolveMetricsPort(service),
                 service.getNode().getId(),
                 service.getNode().getNodeName()
         );

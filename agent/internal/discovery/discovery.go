@@ -92,6 +92,15 @@ func classify(process Process, ports map[string]int) (types.DiscoveredService, b
 	command := strings.ToLower(process.Command)
 	args := strings.ToLower(process.Args)
 	switch {
+	case command == "java" && strings.Contains(args, "middleware-service"):
+		return types.DiscoveredService{
+			ServiceName: "middleware-service",
+			ServiceType: "SPRING_BOOT",
+			Port:        pickPort(ports["java"], 8082),
+			ProcessName: process.Command,
+			MetricsPath: "/actuator/prometheus",
+			MetricsPort: 8082,
+		}, true
 	case command == "java" && (strings.Contains(args, "sample-service") || strings.Contains(args, "spring")):
 		return types.DiscoveredService{
 			ServiceName: "sample-service",
@@ -99,6 +108,7 @@ func classify(process Process, ports map[string]int) (types.DiscoveredService, b
 			Port:        pickPort(ports["java"], 8081),
 			ProcessName: process.Command,
 			MetricsPath: "/actuator/prometheus",
+			MetricsPort: 8081,
 		}, true
 	case strings.Contains(command, "nginx"):
 		return types.DiscoveredService{
@@ -106,6 +116,8 @@ func classify(process Process, ports map[string]int) (types.DiscoveredService, b
 			ServiceType: "NGINX",
 			Port:        pickPort(ports["nginx"], 80),
 			ProcessName: process.Command,
+			MetricsPath: "/metrics",
+			MetricsPort: 9113,
 		}, true
 	case strings.Contains(command, "mysqld") || strings.Contains(command, "mariadbd"):
 		return types.DiscoveredService{
@@ -120,6 +132,8 @@ func classify(process Process, ports map[string]int) (types.DiscoveredService, b
 			ServiceType: "REDIS",
 			Port:        pickPort(ports["redis-server"], 6379),
 			ProcessName: process.Command,
+			MetricsPath: "/metrics",
+			MetricsPort: 9121,
 		}, true
 	case strings.Contains(command, "node_exporter"):
 		return types.DiscoveredService{
@@ -128,6 +142,7 @@ func classify(process Process, ports map[string]int) (types.DiscoveredService, b
 			Port:        pickPort(ports["node_exporter"], 9100),
 			ProcessName: process.Command,
 			MetricsPath: "/metrics",
+			MetricsPort: 9100,
 		}, true
 	default:
 		return types.DiscoveredService{}, false

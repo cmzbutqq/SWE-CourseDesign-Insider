@@ -29,7 +29,7 @@
           <strong>{{ services.length - noMetricsCount }}</strong>
         </div>
         <div class="summary-stat warning">
-          <span>未配置 metricsPath</span>
+          <span>未配置抓取路径</span>
           <strong>{{ noMetricsCount }}</strong>
         </div>
       </section>
@@ -42,7 +42,7 @@
         <div class="section-heading">
           <div>
             <h3>{{ type }}</h3>
-            <p>{{ group.length }} 个服务，{{ unhealthyCount(group) }} 个指标路径缺失。</p>
+            <p>{{ group.length }} 个服务，{{ unhealthyCount(group) }} 个抓取路径缺失。</p>
           </div>
         </div>
         <article class="panel">
@@ -52,8 +52,9 @@
                 <th>服务</th>
                 <th>节点</th>
                 <th>端口</th>
+                <th>指标端口</th>
                 <th>进程</th>
-                <th>metricsPath</th>
+                <th>抓取路径</th>
                 <th>操作</th>
               </tr>
             </thead>
@@ -75,6 +76,7 @@
                   <span v-else>{{ service.nodeName || "-" }}</span>
                 </td>
                 <td>{{ service.port || "-" }}</td>
+                <td>{{ service.metricsPort ?? "-" }}</td>
                 <td>{{ service.processName || "-" }}</td>
                 <td>
                   <span v-if="hasMetricsPath(service)" class="status-pill success">

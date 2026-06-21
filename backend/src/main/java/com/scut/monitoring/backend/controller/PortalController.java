@@ -5,8 +5,10 @@ import com.scut.monitoring.backend.dto.NodeSummaryResponse;
 import com.scut.monitoring.backend.dto.OverviewResponse;
 import com.scut.monitoring.backend.dto.ServiceDetailResponse;
 import com.scut.monitoring.backend.dto.ServiceSummaryResponse;
+import com.scut.monitoring.backend.dto.TracingSummaryResponse;
 import com.scut.monitoring.backend.dto.TrendsResponse;
 import com.scut.monitoring.backend.service.NodeRegistryService;
+import com.scut.monitoring.backend.service.SkyWalkingQueryService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -20,9 +22,11 @@ import java.util.List;
 public class PortalController {
 
     private final NodeRegistryService nodeRegistryService;
+    private final SkyWalkingQueryService skyWalkingQueryService;
 
-    public PortalController(NodeRegistryService nodeRegistryService) {
+    public PortalController(NodeRegistryService nodeRegistryService, SkyWalkingQueryService skyWalkingQueryService) {
         this.nodeRegistryService = nodeRegistryService;
+        this.skyWalkingQueryService = skyWalkingQueryService;
     }
 
     @GetMapping("/overview")
@@ -57,5 +61,10 @@ public class PortalController {
     @GetMapping(value = "/trends", produces = "application/json;charset=UTF-8")
     public TrendsResponse trends(@RequestParam(defaultValue = "1") double hours) {
         return nodeRegistryService.getTrends(hours);
+    }
+
+    @GetMapping("/tracing/summary")
+    public TracingSummaryResponse tracingSummary() {
+        return skyWalkingQueryService.loadTracingSummary();
     }
 }

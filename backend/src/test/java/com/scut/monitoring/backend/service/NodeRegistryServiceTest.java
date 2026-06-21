@@ -59,8 +59,8 @@ class NodeRegistryServiceTest {
                 "linux",
                 "0.1.0",
                 List.of(
-                        new DiscoveredServicePayload("sample-service", "SPRING_BOOT", 8081, "java", "/actuator/prometheus"),
-                        new DiscoveredServicePayload("node-exporter", "NODE_EXPORTER", 9100, "node_exporter", "/metrics")
+                        new DiscoveredServicePayload("sample-service", "SPRING_BOOT", 8081, "java", "/actuator/prometheus", 8081),
+                        new DiscoveredServicePayload("node-exporter", "NODE_EXPORTER", 9100, "node_exporter", "/metrics", 9100)
                 )
         );
 
@@ -79,6 +79,9 @@ class NodeRegistryServiceTest {
         assertThat(savedNode.getServices())
                 .extracting(service -> service.getNode().getNodeName())
                 .containsOnly("app-node");
+        assertThat(savedNode.getServices())
+                .extracting(DiscoveredService::getMetricsPort)
+                .containsExactlyInAnyOrder(8081, 9100);
         assertThat(response.services()).hasSize(2);
     }
 
@@ -114,7 +117,7 @@ class NodeRegistryServiceTest {
                 "172.20.0.10",
                 "linux",
                 "0.1.0",
-                List.of(new DiscoveredServicePayload("nginx", "NGINX", 80, "nginx", "/metrics"))
+                List.of(new DiscoveredServicePayload("nginx", "NGINX", 80, "nginx", "/metrics", 9113))
         );
 
         when(managedNodeRepository.findByNodeName("app-node")).thenReturn(Optional.empty());
@@ -352,7 +355,7 @@ class NodeRegistryServiceTest {
     }
 
     @Test
-    void overviewShouldCountServicesWithoutMetricsPathAsAbnormalAlerts() {
+    void overviewShouldCountServicesWithoutScrapeEndpointAsAbnormalAlerts() {
         ManagedNode middlewareNode = createNode("middleware-node", "ONLINE");
         DiscoveredService nginx = createService(middlewareNode, "nginx", "NGINX", null);
         DiscoveredService redis = createService(middlewareNode, "redis", "REDIS", " ");
@@ -375,7 +378,7 @@ class NodeRegistryServiceTest {
         assertThat(response.anomalies().services())
                 .allSatisfy(service -> {
                     assertThat(service.status()).isEqualTo("ABNORMAL");
-                    assertThat(service.errorType()).isEqualTo("NO_METRICS_PATH");
+                    assertThat(service.errorType()).isEqualTo("NO_SCRAPE_ENDPOINT");
                     assertThat(service.nodeName()).isEqualTo("middleware-node");
                 });
     }
@@ -437,7 +440,8 @@ class NodeRegistryServiceTest {
                         "SPRING_BOOT",
                         8081,
                         "java",
-                        "/actuator/prometheus"
+                        "/actuator/prometheus",
+                        8081
                 ))
         );
 
@@ -464,6 +468,7 @@ class NodeRegistryServiceTest {
         DiscoveredService service = createService(node, "sample-service", "SPRING_BOOT", " ");
         ReflectionTestUtils.setField(service, "id", 7L);
         service.setPort(8081);
+        service.setMetricsPort(8081);
         service.setProcessName("java");
 
         when(discoveredServiceRepository.findById(7L)).thenReturn(Optional.of(service));
@@ -476,6 +481,7 @@ class NodeRegistryServiceTest {
         assertThat(response.port()).isEqualTo(8081);
         assertThat(response.processName()).isEqualTo("java");
         assertThat(response.metricsPath()).isNull();
+        assertThat(response.metricsPort()).isEqualTo(8081);
         assertThat(response.nodeId()).isEqualTo(42L);
         assertThat(response.nodeName()).isEqualTo("app-node");
         assertThat(response.nodeIpAddress()).isEqualTo("172.20.0.10");

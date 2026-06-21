@@ -15,7 +15,7 @@
           :class="{ 'is-hidden': hasError }"
           :title="resolvedFrameTitle"
           :src="src"
-          loading="lazy"
+          loading="eager"
           @load="handleLoad"
           @error="handleError"
         />

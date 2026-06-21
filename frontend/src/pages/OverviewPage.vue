@@ -98,7 +98,7 @@ const summaryItems = computed(() => [
   {
     label: "高风险服务",
     value: overviewData.anomalies.services.length,
-    detail: "优先确认 metricsPath、实例标签与运行态面板。",
+    detail: "优先确认抓取路径、实例标签与运行态面板。",
   },
 ]);
 

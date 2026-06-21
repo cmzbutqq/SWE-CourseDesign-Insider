@@ -12,7 +12,7 @@ describe("ServicesPage", () => {
     fetchServices.mockReset();
   });
 
-  it("treats whitespace-only metrics paths as unavailable and links each row to service detail", async () => {
+  it("treats whitespace-only scrape paths as unavailable and links each row to service detail", async () => {
     fetchServices.mockResolvedValue([
       {
         id: 1,
@@ -40,7 +40,7 @@ describe("ServicesPage", () => {
     await flushPromises();
 
     expect(fetchServices).toHaveBeenCalledTimes(1);
-    expect(wrapper.text()).toContain("1 个指标路径缺失");
+    expect(wrapper.text()).toContain("1 个抓取路径缺失");
     expect(wrapper.text()).toContain("未配置");
     expect(
       wrapper

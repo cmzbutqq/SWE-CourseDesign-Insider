@@ -21,7 +21,7 @@
 
     <template v-else-if="hasLoaded">
       <div v-if="service.metricsMissing" class="warning-banner">
-        当前服务未配置 metricsPath，Grafana / Prometheus 的可观测内容可能不完整。
+        当前服务缺少可抓取指标端点，Grafana / Prometheus 的可观测内容可能不完整。
       </div>
 
       <RiskSummary
@@ -96,8 +96,12 @@
               <dd>{{ service.processName || "-" }}</dd>
             </div>
             <div>
-              <dt>metricsPath</dt>
+              <dt>抓取路径</dt>
               <dd>{{ service.metricsPath || "未配置" }}</dd>
+            </div>
+            <div>
+              <dt>指标端口</dt>
+              <dd>{{ service.metricsPort ?? "未配置" }}</dd>
             </div>
           </dl>
 
@@ -149,6 +153,7 @@ const service = reactive({
   port: null,
   processName: "",
   metricsPath: null,
+  metricsPort: null,
   nodeId: null,
   nodeName: "",
   nodeIpAddress: "",
@@ -186,7 +191,8 @@ const summaryItems = computed(() => [
   { label: "节点状态", value: service.nodeStatus || "-" },
   { label: "端口", value: service.port || "-" },
   { label: "进程", value: service.processName || "-" },
-  { label: "metricsPath", value: service.metricsPath || "未配置" },
+  { label: "抓取路径", value: service.metricsPath || "未配置" },
+  { label: "指标端口", value: service.metricsPort ?? "未配置" },
 ]);
 
 const panelGroups = computed(() => buildServicePanelGroups(service));

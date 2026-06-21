@@ -77,10 +77,11 @@ export function buildSkyWalkingUrl(path = "/", env = import.meta.env) {
 const SKYWALKING_SERVICE_OVERVIEW_PATH = "/General-Service/Services";
 
 function buildServiceInstanceLabel(service) {
-  if (!service?.nodeName || !service?.port) {
+  const metricsPort = service?.metricsPort;
+  if (!service?.nodeName || !metricsPort) {
     return null;
   }
-  return `${service.nodeName}:${service.port}`;
+  return `${service.nodeName}:${metricsPort}`;
 }
 
 function withFallback(source, src, fallbackHref, extra = {}) {
@@ -266,8 +267,8 @@ export function buildServicePanelGroups(service, env = import.meta.env) {
     ? `job="${service?.serviceName || ""}",instance="${instance}"`
     : `job="${service?.serviceName || ""}"`;
 
-  return {
-    runtime: [
+  const runtimePanelsByType = {
+    SPRING_BOOT: [
       withFallback(
         "Grafana",
         buildGrafanaPanelUrl({ ...dashboard, panelId: 1 }, env),
@@ -292,6 +293,52 @@ export function buildServicePanelGroups(service, env = import.meta.env) {
         fallbackHref,
         { title: "Resident Memory" }
       ),
+    ],
+    NGINX: [
+      withFallback(
+        "Prometheus",
+        buildPrometheusGraphUrl(`nginx_connections_active{${selector}}`, env),
+        buildPrometheusGraphUrl(`nginx_connections_active{${selector}}`, env),
+        {
+          title: "Nginx Active Connections",
+          ...PROMETHEUS_GRAPH_PANEL_PROPS,
+        }
+      ),
+      withFallback(
+        "Prometheus",
+        buildPrometheusGraphUrl(`rate(nginx_http_requests_total{${selector}}[5m])`, env),
+        buildPrometheusGraphUrl(`rate(nginx_http_requests_total{${selector}}[5m])`, env),
+        {
+          title: "Nginx Request Rate",
+          ...PROMETHEUS_GRAPH_PANEL_PROPS,
+        }
+      ),
+    ],
+    REDIS: [
+      withFallback(
+        "Prometheus",
+        buildPrometheusGraphUrl(`redis_connected_clients{${selector}}`, env),
+        buildPrometheusGraphUrl(`redis_connected_clients{${selector}}`, env),
+        {
+          title: "Redis Connected Clients",
+          ...PROMETHEUS_GRAPH_PANEL_PROPS,
+        }
+      ),
+      withFallback(
+        "Prometheus",
+        buildPrometheusGraphUrl(`rate(redis_commands_processed_total{${selector}}[5m])`, env),
+        buildPrometheusGraphUrl(`rate(redis_commands_processed_total{${selector}}[5m])`, env),
+        {
+          title: "Redis Commands Rate",
+          ...PROMETHEUS_GRAPH_PANEL_PROPS,
+        }
+      ),
+    ],
+  };
+
+  return {
+    runtime: [
+      ...(runtimePanelsByType[service?.serviceType] || runtimePanelsByType.SPRING_BOOT),
     ],
     tracing: [
       withFallback(

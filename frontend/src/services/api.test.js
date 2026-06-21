@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchServiceDetail, resolveApiBaseUrl } from "./api";
+import {
+  fetchServiceDetail,
+  fetchTracingSummary,
+  resolveApiBaseUrl,
+} from "./api";
 
 describe("api service helpers", () => {
   beforeEach(() => {
@@ -34,5 +38,16 @@ describe("api service helpers", () => {
     });
 
     await expect(fetchServiceDetail(7)).rejects.toThrow("Request failed: 503");
+  });
+
+  it("requests tracing summary from the backend api", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ traces: [] }),
+    });
+
+    await fetchTracingSummary();
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/tracing/summary");
   });
 });
