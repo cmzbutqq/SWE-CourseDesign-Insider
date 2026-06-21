@@ -1,9 +1,56 @@
 import { describe, expect, it } from "vitest";
-import config from "./vite.config.js";
+import config, {
+  createProxyConfig,
+  resolveProxyTargets,
+} from "./vite.config.js";
 
 describe("vite config", () => {
-  it("proxies api requests to the backend container", () => {
-    expect(config.server.proxy["/api"].target).toBe("http://backend:8080");
-    expect(config.server.proxy["/api"].changeOrigin).toBe(true);
+  it("resolves default proxy targets without ambient env overrides", () => {
+    expect(resolveProxyTargets({})).toEqual({
+      api: "http://backend:8080",
+      grafana: "http://grafana:3000",
+      prometheus: "http://prometheus:9090",
+    });
+  });
+
+  it("resolves proxy targets from explicit env overrides", () => {
+    expect(
+      resolveProxyTargets({
+        VITE_PROXY_TARGET: "http://backend.example:18081",
+        VITE_GRAFANA_PROXY_TARGET: "http://grafana.example:13000",
+        VITE_PROMETHEUS_PROXY_TARGET: "http://prometheus.example:19090",
+      })
+    ).toEqual({
+      api: "http://backend.example:18081",
+      grafana: "http://grafana.example:13000",
+      prometheus: "http://prometheus.example:19090",
+    });
+  });
+
+  it("creates proxy entries for backend and observability requests", () => {
+    expect(
+      createProxyConfig({
+        VITE_PROXY_TARGET: "http://backend.example:18081",
+        VITE_GRAFANA_PROXY_TARGET: "http://grafana.example:13000",
+        VITE_PROMETHEUS_PROXY_TARGET: "http://prometheus.example:19090",
+      })
+    ).toEqual({
+      "/api": {
+        target: "http://backend.example:18081",
+        changeOrigin: true,
+      },
+      "/grafana": {
+        target: "http://grafana.example:13000",
+        changeOrigin: true,
+      },
+      "/prometheus": {
+        target: "http://prometheus.example:19090",
+        changeOrigin: true,
+      },
+    });
+  });
+
+  it("wires the default export to the proxy helper", () => {
+    expect(config.server.proxy).toEqual(createProxyConfig(process.env));
   });
 });

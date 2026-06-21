@@ -45,8 +45,8 @@ class NodeRegistryServiceTest {
             heartbeatEventRepository,
             metricsSnapshotRepository,
             nodeMetricsRepository,
-            "http://localhost:19090",
-            "http://localhost:13000",
+            "http://localhost:15173/prometheus",
+            "http://localhost:15173/grafana",
             "http://localhost:18082"
     );
 
@@ -59,8 +59,8 @@ class NodeRegistryServiceTest {
                 "linux",
                 "0.1.0",
                 List.of(
-                        new DiscoveredServicePayload("sample-service", "SPRING_BOOT", 8081, "java", "/actuator/prometheus"),
-                        new DiscoveredServicePayload("node-exporter", "NODE_EXPORTER", 9100, "node_exporter", "/metrics")
+                        new DiscoveredServicePayload("sample-service", "SPRING_BOOT", 8081, "java", "/actuator/prometheus", 8081),
+                        new DiscoveredServicePayload("node-exporter", "NODE_EXPORTER", 9100, "node_exporter", "/metrics", 9100)
                 )
         );
 
@@ -79,6 +79,9 @@ class NodeRegistryServiceTest {
         assertThat(savedNode.getServices())
                 .extracting(service -> service.getNode().getNodeName())
                 .containsOnly("app-node");
+        assertThat(savedNode.getServices())
+                .extracting(DiscoveredService::getMetricsPort)
+                .containsExactlyInAnyOrder(8081, 9100);
         assertThat(response.services()).hasSize(2);
     }
 
@@ -114,7 +117,7 @@ class NodeRegistryServiceTest {
                 "172.20.0.10",
                 "linux",
                 "0.1.0",
-                List.of(new DiscoveredServicePayload("nginx", "NGINX", 80, "nginx", "/metrics"))
+                List.of(new DiscoveredServicePayload("nginx", "NGINX", 80, "nginx", "/metrics", 9113))
         );
 
         when(managedNodeRepository.findByNodeName("app-node")).thenReturn(Optional.empty());
@@ -278,9 +281,9 @@ class NodeRegistryServiceTest {
         assertThat(response.quickLinks())
                 .extracting(link -> link.url())
                 .contains(
-                        "http://localhost:13000/d/scut-monitoring-overview/scut-monitoring-overview?var-job=app-node",
-                        "http://localhost:19090/graph?g0.expr=up%7Bjob%3D%22app-node%22%7D",
-                        "http://localhost:18082/general-service"
+                        "http://localhost:15173/grafana/d/node-detail/node-detail?var-job=app-node",
+                        "http://localhost:15173/prometheus/graph?g0.expr=up%7Bjob%3D%22app-node%22%7D",
+                        "http://localhost:18082/General-Service/Services"
                 );
     }
 
@@ -352,7 +355,7 @@ class NodeRegistryServiceTest {
     }
 
     @Test
-    void overviewShouldCountServicesWithoutMetricsPathAsAbnormalAlerts() {
+    void overviewShouldCountServicesWithoutScrapeEndpointAsAbnormalAlerts() {
         ManagedNode middlewareNode = createNode("middleware-node", "ONLINE");
         DiscoveredService nginx = createService(middlewareNode, "nginx", "NGINX", null);
         DiscoveredService redis = createService(middlewareNode, "redis", "REDIS", " ");
@@ -375,7 +378,7 @@ class NodeRegistryServiceTest {
         assertThat(response.anomalies().services())
                 .allSatisfy(service -> {
                     assertThat(service.status()).isEqualTo("ABNORMAL");
-                    assertThat(service.errorType()).isEqualTo("NO_METRICS_PATH");
+                    assertThat(service.errorType()).isEqualTo("NO_SCRAPE_ENDPOINT");
                     assertThat(service.nodeName()).isEqualTo("middleware-node");
                 });
     }
@@ -410,6 +413,87 @@ class NodeRegistryServiceTest {
         Object nodeId = response.get(0).getClass().getMethod("nodeId").invoke(response.get(0));
         assertThat(nodeId).isEqualTo(42L);
         assertThat(response.get(0).nodeName()).isEqualTo("app-node");
+    }
+
+    @Test
+    void registerNodeShouldReuseMatchingServicesSoDetailIdsStayStable() {
+        ManagedNode existingNode = createNode("app-node", "ONLINE");
+        DiscoveredService existingService = createService(
+                existingNode,
+                "sample-service",
+                "SPRING_BOOT",
+                "/actuator/prometheus"
+        );
+        ReflectionTestUtils.setField(existingService, "id", 7L);
+        existingService.setPort(8081);
+        existingService.setProcessName("java");
+        existingNode.getServices().add(existingService);
+
+        AgentRegisterRequest request = new AgentRegisterRequest(
+                "app-node",
+                "app-node-host",
+                "172.20.0.10",
+                "linux",
+                "0.1.1",
+                List.of(new DiscoveredServicePayload(
+                        "sample-service",
+                        "SPRING_BOOT",
+                        8081,
+                        "java",
+                        "/actuator/prometheus",
+                        8081
+                ))
+        );
+
+        when(managedNodeRepository.findByNodeName("app-node")).thenReturn(Optional.of(existingNode));
+        when(managedNodeRepository.save(org.mockito.ArgumentMatchers.any(ManagedNode.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(nodeMetricsRepository.findTopByNodeOrderByCollectedAtDesc(existingNode)).thenReturn(Optional.empty());
+
+        var response = nodeRegistryService.registerNode(request);
+
+        assertThat(response.services()).hasSize(1);
+        assertThat(existingNode.getServices()).hasSize(1);
+        assertThat(existingNode.getServices().get(0)).isSameAs(existingService);
+        assertThat(existingNode.getServices().get(0).getId()).isEqualTo(7L);
+    }
+
+    @Test
+    void getServiceShouldReturnNodeContextAndObservationLinks() {
+        ManagedNode node = createNode("app-node", "ONLINE");
+        ReflectionTestUtils.setField(node, "id", 42L);
+        node.setIpAddress("172.20.0.10");
+        node.setStatus("WARNING");
+
+        DiscoveredService service = createService(node, "sample-service", "SPRING_BOOT", " ");
+        ReflectionTestUtils.setField(service, "id", 7L);
+        service.setPort(8081);
+        service.setMetricsPort(8081);
+        service.setProcessName("java");
+
+        when(discoveredServiceRepository.findById(7L)).thenReturn(Optional.of(service));
+
+        var response = nodeRegistryService.getService(7L);
+
+        assertThat(response.id()).isEqualTo(7L);
+        assertThat(response.serviceName()).isEqualTo("sample-service");
+        assertThat(response.serviceType()).isEqualTo("SPRING_BOOT");
+        assertThat(response.port()).isEqualTo(8081);
+        assertThat(response.processName()).isEqualTo("java");
+        assertThat(response.metricsPath()).isNull();
+        assertThat(response.metricsPort()).isEqualTo(8081);
+        assertThat(response.nodeId()).isEqualTo(42L);
+        assertThat(response.nodeName()).isEqualTo("app-node");
+        assertThat(response.nodeIpAddress()).isEqualTo("172.20.0.10");
+        assertThat(response.nodeStatus()).isEqualTo("WARNING");
+        assertThat(response.metricsMissing()).isTrue();
+        assertThat(response.quickLinks())
+                .extracting(link -> link.url())
+                .containsExactly(
+                        "http://localhost:15173/grafana/d/service-detail/service-detail?var-service=sample-service&var-instance=app-node%3A8081",
+                        "http://localhost:15173/prometheus/graph?g0.expr=up%7Bjob%3D%22sample-service%22%2Cinstance%3D%22app-node%3A8081%22%7D",
+                        "http://localhost:18082/General-Service/Services"
+                );
     }
 
     @Test

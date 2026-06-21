@@ -11,6 +11,7 @@ public record DiscoveredServicePayload(
         @NotBlank @Size(max = 64) String serviceType,
         @NotNull @Min(1) @Max(65535) Integer port,
         @Size(max = 128) String processName,
-        @Size(max = 256) String metricsPath
+        @Size(max = 256) String metricsPath,
+        @Min(1) @Max(65535) Integer metricsPort
 ) {
 }

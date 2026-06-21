@@ -11,6 +11,7 @@ import com.scut.monitoring.backend.dto.NodeDetailResponse;
 import com.scut.monitoring.backend.dto.NodeSummaryResponse;
 import com.scut.monitoring.backend.dto.OverviewResponse;
 import com.scut.monitoring.backend.dto.QuickLinkDTO;
+import com.scut.monitoring.backend.dto.ServiceDetailResponse;
 import com.scut.monitoring.backend.dto.ServiceSummaryResponse;
 import com.scut.monitoring.backend.dto.TrendData;
 import com.scut.monitoring.backend.dto.TrendsResponse;
@@ -34,8 +35,11 @@ import org.springframework.web.server.ResponseStatusException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @Service
@@ -44,6 +48,7 @@ public class NodeRegistryService {
     private static final long HEARTBEAT_TIMEOUT_THRESHOLD_SECONDS = 90;
     private static final Set<String> ALLOWED_HEARTBEAT_STATUSES = Set.of("ONLINE", "OFFLINE", "WARNING");
     private static final double MAX_NETWORK_MEGABITS_PER_SECOND = 100_000d;
+    private static final String SKYWALKING_SERVICE_OVERVIEW_PATH = "/General-Service/Services";
 
     private final ManagedNodeRepository managedNodeRepository;
     private final DiscoveredServiceRepository discoveredServiceRepository;
@@ -86,21 +91,70 @@ public class NodeRegistryService {
         node.setAgentVersion(request.agentVersion());
         node.setStatus("ONLINE");
         node.setLastSeenAt(Instant.now());
-        node.getServices().clear();
+        syncNodeServices(node, request);
 
+        ManagedNode savedNode = managedNodeRepository.save(node);
+        return toNodeDetail(savedNode);
+    }
+
+    private void syncNodeServices(ManagedNode node, AgentRegisterRequest request) {
+        Map<ServiceIdentity, DiscoveredService> existingServices = new LinkedHashMap<>();
+        for (DiscoveredService service : node.getServices()) {
+            existingServices.put(serviceIdentity(service), service);
+        }
+
+        List<DiscoveredService> syncedServices = new ArrayList<>();
         for (var servicePayload : request.services()) {
-            DiscoveredService service = new DiscoveredService();
+            String processName = normalizeProcessName(servicePayload.serviceName(), servicePayload.processName());
+            ServiceIdentity identity = serviceIdentity(
+                    servicePayload.serviceName(),
+                    servicePayload.serviceType(),
+                    servicePayload.port(),
+                    processName
+            );
+            DiscoveredService service = existingServices.remove(identity);
+            if (service == null) {
+                service = new DiscoveredService();
+            }
             service.setNode(node);
             service.setServiceName(servicePayload.serviceName());
             service.setServiceType(servicePayload.serviceType());
             service.setPort(servicePayload.port());
-            service.setProcessName(servicePayload.processName() == null ? servicePayload.serviceName() : servicePayload.processName());
+            service.setProcessName(processName);
             service.setMetricsPath(servicePayload.metricsPath());
-            node.getServices().add(service);
+            service.setMetricsPort(servicePayload.metricsPort());
+            syncedServices.add(service);
         }
 
-        ManagedNode savedNode = managedNodeRepository.save(node);
-        return toNodeDetail(savedNode);
+        List<DiscoveredService> currentServices = node.getServices();
+        currentServices.removeIf(service -> !syncedServices.contains(service));
+        for (int index = 0; index < syncedServices.size(); index++) {
+            DiscoveredService service = syncedServices.get(index);
+            int currentIndex = currentServices.indexOf(service);
+            if (currentIndex == -1) {
+                currentServices.add(index, service);
+            } else if (currentIndex != index) {
+                currentServices.remove(currentIndex);
+                currentServices.add(index, service);
+            }
+        }
+    }
+
+    private String normalizeProcessName(String serviceName, String processName) {
+        return processName == null ? serviceName : processName;
+    }
+
+    private ServiceIdentity serviceIdentity(DiscoveredService service) {
+        return serviceIdentity(
+                service.getServiceName(),
+                service.getServiceType(),
+                service.getPort(),
+                normalizeProcessName(service.getServiceName(), service.getProcessName())
+        );
+    }
+
+    private ServiceIdentity serviceIdentity(String serviceName, String serviceType, Integer port, String processName) {
+        return new ServiceIdentity(serviceName, serviceType, port, processName);
     }
 
     @Transactional
@@ -234,6 +288,13 @@ public class NodeRegistryService {
     }
 
     @Transactional(readOnly = true)
+    public ServiceDetailResponse getService(Long id) {
+        DiscoveredService service = discoveredServiceRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Service not found: " + id));
+        return toServiceDetail(service);
+    }
+
+    @Transactional(readOnly = true)
     public OverviewResponse overview() {
         List<ManagedNode> allNodes = managedNodeRepository.findAll();
         long totalServices = discoveredServiceRepository.count();
@@ -306,7 +367,7 @@ public class NodeRegistryService {
                         service.getId(),
                         service.getServiceName(),
                         "ABNORMAL",
-                        "NO_METRICS_PATH",
+                        "NO_SCRAPE_ENDPOINT",
                         service.getNode().getNodeName()
                 ))
                 .toList();
@@ -473,10 +534,73 @@ public class NodeRegistryService {
         String jobName = node.getNodeName() == null ? "" : node.getNodeName();
         String prometheusExpression = "up{job=\"" + jobName + "\"}";
         return List.of(
-                new QuickLinkDTO("Grafana", grafanaBaseUrl + "/d/scut-monitoring-overview/scut-monitoring-overview?var-job=" + encodeQueryValue(jobName)),
+                new QuickLinkDTO("Grafana", grafanaBaseUrl + "/d/node-detail/node-detail?var-job=" + encodeQueryValue(jobName)),
                 new QuickLinkDTO("Prometheus", prometheusBaseUrl + "/graph?g0.expr=" + encodeQueryValue(prometheusExpression)),
-                new QuickLinkDTO("SkyWalking", skywalkingBaseUrl + "/general-service")
+                new QuickLinkDTO("SkyWalking", skywalkingBaseUrl + SKYWALKING_SERVICE_OVERVIEW_PATH)
         );
+    }
+
+    private ServiceDetailResponse toServiceDetail(DiscoveredService service) {
+        ManagedNode node = service.getNode();
+        Instant now = Instant.now();
+        return new ServiceDetailResponse(
+                service.getId(),
+                service.getServiceName(),
+                service.getServiceType(),
+                service.getPort(),
+                service.getProcessName(),
+                normalizeMetricsPath(service.getMetricsPath()),
+                resolveMetricsPort(service),
+                node.getId(),
+                node.getNodeName(),
+                node.getIpAddress(),
+                effectiveStatus(node, now),
+                isAbnormalService(service),
+                buildServiceQuickLinks(service)
+        );
+    }
+
+    private List<QuickLinkDTO> buildServiceQuickLinks(DiscoveredService service) {
+        String serviceName = service.getServiceName() == null ? "" : service.getServiceName();
+        String instanceLabel = buildServiceInstanceLabel(service);
+        String prometheusExpression = instanceLabel == null
+                ? "up{job=\"" + serviceName + "\"}"
+                : "up{job=\"" + serviceName + "\",instance=\"" + instanceLabel + "\"}";
+        String grafanaUrl = grafanaBaseUrl + "/d/service-detail/service-detail?var-service=" + encodeQueryValue(serviceName);
+        if (instanceLabel != null) {
+            grafanaUrl += "&var-instance=" + encodeQueryValue(instanceLabel);
+        }
+        return List.of(
+                new QuickLinkDTO("Grafana", grafanaUrl),
+                new QuickLinkDTO("Prometheus", prometheusBaseUrl + "/graph?g0.expr=" + encodeQueryValue(prometheusExpression)),
+                new QuickLinkDTO("SkyWalking", skywalkingBaseUrl + SKYWALKING_SERVICE_OVERVIEW_PATH)
+        );
+    }
+
+    private String buildServiceInstanceLabel(DiscoveredService service) {
+        ManagedNode node = service.getNode();
+        Integer metricsPort = resolveMetricsPort(service);
+        if (node == null || node.getNodeName() == null || node.getNodeName().isBlank() || metricsPort == null) {
+            return null;
+        }
+        return node.getNodeName().trim() + ":" + metricsPort;
+    }
+
+    private Integer resolveMetricsPort(DiscoveredService service) {
+        if (service.getMetricsPort() != null) {
+            return service.getMetricsPort();
+        }
+        if (service.getMetricsPath() != null && !service.getMetricsPath().isBlank()) {
+            return service.getPort();
+        }
+        return null;
+    }
+
+    private String normalizeMetricsPath(String metricsPath) {
+        if (metricsPath == null || metricsPath.isBlank()) {
+            return null;
+        }
+        return metricsPath.trim();
     }
 
     private String encodeQueryValue(String value) {
@@ -490,7 +614,8 @@ public class NodeRegistryService {
                 service.getServiceType(),
                 service.getPort(),
                 service.getProcessName(),
-                service.getMetricsPath(),
+                normalizeMetricsPath(service.getMetricsPath()),
+                resolveMetricsPort(service),
                 service.getNode().getId(),
                 service.getNode().getNodeName()
         );
@@ -612,5 +737,8 @@ public class NodeRegistryService {
                     "hours must be a finite number within (0, " + MAX_TRENDS_QUERY_HOURS + "]"
             );
         }
+    }
+
+    private record ServiceIdentity(String serviceName, String serviceType, Integer port, String processName) {
     }
 }

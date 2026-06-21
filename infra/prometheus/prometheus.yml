@@ -19,3 +19,18 @@ scrape_configs:
   - job_name: "middleware-node"
     static_configs:
       - targets: ["middleware-node:9100"]
+
+  - job_name: "middleware-service"
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["middleware-node:8082"]
+
+  - job_name: "nginx"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["middleware-node:9113"]
+
+  - job_name: "redis"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["middleware-node:9121"]

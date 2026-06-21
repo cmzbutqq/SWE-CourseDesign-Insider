@@ -12,7 +12,7 @@ describe("ServicesPage", () => {
     fetchServices.mockReset();
   });
 
-  it("treats whitespace-only metrics paths as unavailable and keeps node detail links", async () => {
+  it("treats whitespace-only scrape paths as unavailable and links each row to service detail", async () => {
     fetchServices.mockResolvedValue([
       {
         id: 1,
@@ -28,7 +28,11 @@ describe("ServicesPage", () => {
     const wrapper = mount(ServicesPage, {
       global: {
         stubs: {
-          RouterLink: RouterLinkStub
+          RouterLink: RouterLinkStub,
+          ContextHeader: {
+            props: ["title", "description", "eyebrow"],
+            template: "<header><h1>{{ title }}</h1><slot name='actions' /></header>",
+          },
         }
       }
     });
@@ -36,8 +40,13 @@ describe("ServicesPage", () => {
     await flushPromises();
 
     expect(fetchServices).toHaveBeenCalledTimes(1);
-    expect(wrapper.text()).toContain("1 个指标路径不可用");
+    expect(wrapper.text()).toContain("1 个抓取路径缺失");
     expect(wrapper.text()).toContain("未配置");
+    expect(
+      wrapper
+        .findAllComponents(RouterLinkStub)
+        .some((link) => link.props("to") === "/services/1")
+    ).toBe(true);
     expect(
       wrapper
         .findAllComponents(RouterLinkStub)

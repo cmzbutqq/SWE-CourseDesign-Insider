@@ -10,6 +10,7 @@ import (
 )
 
 type Process struct {
+	PID     string
 	Command string
 	Args    string
 }
@@ -19,7 +20,10 @@ type Discoverer struct {
 	PortOutput    string
 }
 
-var portPattern = regexp.MustCompile(`:(\d+)`)
+var (
+	portPattern = regexp.MustCompile(`:(\d+)`)
+	pidPattern  = regexp.MustCompile(`pid=(\d+)`)
+)
 
 func (d Discoverer) Discover() []types.DiscoveredService {
 	processes := parseProcesses(d.ProcessOutput)
@@ -55,7 +59,7 @@ func parseProcesses(output string) []Process {
 		}
 		command := fields[1]
 		args := strings.Join(fields[2:], " ")
-		processes = append(processes, Process{Command: command, Args: args})
+		processes = append(processes, Process{PID: fields[0], Command: command, Args: args})
 	}
 	return processes
 }
@@ -63,27 +67,16 @@ func parseProcesses(output string) []Process {
 func parsePorts(output string) map[string]int {
 	ports := make(map[string]int)
 	for _, line := range strings.Split(output, "\n") {
-		matches := portPattern.FindStringSubmatch(line)
-		if len(matches) < 2 {
+		portMatches := portPattern.FindStringSubmatch(line)
+		pidMatches := pidPattern.FindStringSubmatch(line)
+		if len(portMatches) < 2 || len(pidMatches) < 2 {
 			continue
 		}
-		port, err := strconv.Atoi(matches[1])
+		port, err := strconv.Atoi(portMatches[1])
 		if err != nil {
 			continue
 		}
-		lower := strings.ToLower(line)
-		switch {
-		case strings.Contains(lower, "java"):
-			ports["java"] = port
-		case strings.Contains(lower, "nginx"):
-			ports["nginx"] = port
-		case strings.Contains(lower, "mysqld") || strings.Contains(lower, "mariadbd"):
-			ports["mysqld"] = port
-		case strings.Contains(lower, "redis-server"):
-			ports["redis-server"] = port
-		case strings.Contains(lower, "node_exporter"):
-			ports["node_exporter"] = port
-		}
+		ports[pidMatches[1]] = port
 	}
 	return ports
 }
@@ -92,42 +85,57 @@ func classify(process Process, ports map[string]int) (types.DiscoveredService, b
 	command := strings.ToLower(process.Command)
 	args := strings.ToLower(process.Args)
 	switch {
+	case command == "java" && strings.Contains(args, "middleware-service"):
+		return types.DiscoveredService{
+			ServiceName: "middleware-service",
+			ServiceType: "SPRING_BOOT",
+			Port:        pickPort(ports[process.PID], 8082),
+			ProcessName: process.Command,
+			MetricsPath: "/actuator/prometheus",
+			MetricsPort: 8082,
+		}, true
 	case command == "java" && (strings.Contains(args, "sample-service") || strings.Contains(args, "spring")):
 		return types.DiscoveredService{
 			ServiceName: "sample-service",
 			ServiceType: "SPRING_BOOT",
-			Port:        pickPort(ports["java"], 8081),
+			Port:        pickPort(ports[process.PID], 8081),
 			ProcessName: process.Command,
 			MetricsPath: "/actuator/prometheus",
+			MetricsPort: 8081,
 		}, true
 	case strings.Contains(command, "nginx"):
 		return types.DiscoveredService{
 			ServiceName: "nginx",
 			ServiceType: "NGINX",
-			Port:        pickPort(ports["nginx"], 80),
+			Port:        pickPort(ports[process.PID], 80),
 			ProcessName: process.Command,
+			MetricsPath: "/metrics",
+			MetricsPort: 9113,
 		}, true
 	case strings.Contains(command, "mysqld") || strings.Contains(command, "mariadbd"):
 		return types.DiscoveredService{
 			ServiceName: "mysql",
 			ServiceType: "MYSQL",
-			Port:        pickPort(ports["mysqld"], 3306),
+			Port:        pickPort(ports[process.PID], 3306),
 			ProcessName: process.Command,
 		}, true
 	case strings.Contains(command, "redis-server"):
 		return types.DiscoveredService{
 			ServiceName: "redis",
 			ServiceType: "REDIS",
-			Port:        pickPort(ports["redis-server"], 6379),
+			Port:        pickPort(ports[process.PID], 6379),
 			ProcessName: process.Command,
+			MetricsPath: "/metrics",
+			MetricsPort: 9121,
 		}, true
 	case strings.Contains(command, "node_exporter"):
 		return types.DiscoveredService{
 			ServiceName: "node-exporter",
 			ServiceType: "NODE_EXPORTER",
-			Port:        pickPort(ports["node_exporter"], 9100),
+			Port:        pickPort(ports[process.PID], 9100),
 			ProcessName: process.Command,
 			MetricsPath: "/metrics",
+			MetricsPort: 9100,
 		}, true
 	default:
 		return types.DiscoveredService{}, false

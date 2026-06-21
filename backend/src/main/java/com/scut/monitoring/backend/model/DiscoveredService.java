@@ -32,6 +32,8 @@ public class DiscoveredService {
 
     private String metricsPath;
 
+    private Integer metricsPort;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "node_id", nullable = false)
     private ManagedNode node;
@@ -78,6 +80,14 @@ public class DiscoveredService {
 
     public void setMetricsPath(String metricsPath) {
         this.metricsPath = metricsPath;
+    }
+
+    public Integer getMetricsPort() {
+        return metricsPort;
+    }
+
+    public void setMetricsPort(Integer metricsPort) {
+        this.metricsPort = metricsPort;
     }
 
     public ManagedNode getNode() {

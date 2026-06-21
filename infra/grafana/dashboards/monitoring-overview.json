@@ -9,98 +9,45 @@
   "links": [],
   "panels": [
     {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
       "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 0
-      },
-      "id": 1,
-      "targets": [
-        {
-          "expr": "up",
-          "refId": "A"
-        }
-      ],
-      "title": "Targets Up",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 0
-      },
-      "id": 2,
-      "targets": [
-        {
-          "expr": "process_uptime_seconds{job=\"sample-service\"}",
-          "refId": "A"
-        }
-      ],
-      "title": "Sample Service Uptime",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "custom": {}
+        },
         "overrides": []
       },
       "gridPos": {
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 8
+        "y": 0
       },
-      "id": 3,
-      "targets": [
-        {
-          "expr": "rate(process_cpu_seconds_total[1m])",
-          "refId": "A"
-        }
-      ],
-      "title": "CPU Usage Rate",
-      "type": "timeseries"
+      "id": 1,
+      "options": {
+        "content": "This dashboard has been retired. Use `platform-overview`, `node-detail`, and `service-detail` for the current observability views.",
+        "mode": "markdown"
+      },
+      "title": "Legacy Dashboard Notice",
+      "type": "text"
     }
   ],
   "refresh": "15s",
   "schemaVersion": 39,
   "style": "dark",
   "tags": [
-    "scut",
-    "monitoring"
+    "legacy",
+    "monitoring",
+    "scut"
   ],
   "templating": {
     "list": []
   },
   "time": {
-    "from": "now-15m",
+    "from": "now-1h",
     "to": "now"
   },
   "timezone": "browser",
-  "title": "SCUT Monitoring Overview",
-  "uid": "scut-monitoring-overview",
+  "title": "Legacy Monitoring Overview",
+  "uid": "monitoring-overview-legacy",
   "version": 1,
   "weekStart": ""
 }

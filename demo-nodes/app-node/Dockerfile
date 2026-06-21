@@ -20,6 +20,7 @@ COPY demo-apps/sample-service/ ./
 RUN sh /usr/local/bin/mvn-with-mirror.sh -q -DskipTests package
 
 FROM prom/node-exporter:v1.8.2 AS node-exporter
+FROM scut-monitoring-app-node AS skywalking-agent-source
 
 FROM eclipse-temurin:21-jre-jammy
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -30,12 +31,11 @@ WORKDIR /opt/app
 COPY --from=agent-builder /out/monitor-agent /usr/local/bin/monitor-agent
 COPY --from=sample-builder /src/demo-apps/sample-service/target/sample-service-0.0.1-SNAPSHOT.jar /opt/app/sample-service.jar
 COPY --from=node-exporter /bin/node_exporter /usr/local/bin/node_exporter
+COPY --from=skywalking-agent-source /opt/skywalking /opt/skywalking
 COPY demo-nodes/app-node/supervisord.conf /etc/supervisor/conf.d/app-node.conf
+COPY demo-nodes/app-node/traffic-generator.sh /usr/local/bin/traffic-generator.sh
 
-RUN mkdir -p /opt/skywalking && \
-    curl -fsSL --retry 3 https://archive.apache.org/dist/skywalking/java-agent/9.4.0/apache-skywalking-java-agent-9.4.0.tgz -o /tmp/skywalking.tgz && \
-    tar -xzf /tmp/skywalking.tgz -C /opt/skywalking --strip-components=1 && \
-    rm -f /tmp/skywalking.tgz
+RUN chmod +x /usr/local/bin/traffic-generator.sh
 
 EXPOSE 8081 9100
 
