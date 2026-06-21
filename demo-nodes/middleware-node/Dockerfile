@@ -20,10 +20,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /opt/skywalking \
     && curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 \
-    "https://archive.apache.org/dist/skywalking/java-agent/${SKYWALKING_AGENT_VERSION}/apache-skywalking-java-agent-${SKYWALKING_AGENT_VERSION}.tgz" \
-    -o /tmp/skywalking.tgz \
-    && tar -xzf /tmp/skywalking.tgz -C /opt/skywalking --strip-components=1 \
-    && rm -f /tmp/skywalking.tgz
+    "https://repo1.maven.org/maven2/org/apache/skywalking/apm-agent/${SKYWALKING_AGENT_VERSION}/apm-agent-${SKYWALKING_AGENT_VERSION}.jar" \
+    -o /opt/skywalking/skywalking-agent.jar
 
 ARG MAVEN_MIRROR_URL=https://maven.aliyun.com/repository/public
 FROM maven:3.9-eclipse-temurin-21 AS middleware-builder
