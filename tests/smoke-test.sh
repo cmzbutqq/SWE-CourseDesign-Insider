@@ -49,7 +49,7 @@ docker compose --profile observability --profile nodes up -d --build
 
 wait_for_http "http://localhost:18081/api/overview"
 wait_for_http "http://localhost:15173"
-wait_for_http "http://localhost:19090/-/healthy"
+wait_for_http "http://localhost:19090/prometheus/-/healthy"
 wait_for_http "http://localhost:13000/api/health"
 wait_for_http "http://localhost:18082"
 
@@ -73,7 +73,7 @@ if ! wait_for_contains "http://localhost:18081/api/services" "MYSQL" 24 5; then
   exit 1
 fi
 
-if ! wait_for_contains "http://localhost:19090/api/v1/targets" "sample-service" 24 5; then
+if ! wait_for_contains "http://localhost:19090/prometheus/api/v1/targets" "sample-service" 24 5; then
   echo "prometheus did not scrape sample-service"
   exit 1
 fi
