@@ -86,7 +86,7 @@ describe("observability urls", () => {
 
   it("defaults SkyWalking to its direct absolute origin", () => {
     expect(resolveObservabilityConfig({}).skywalkingBaseUrl).toBe(
-      "http://localhost:18082"
+      "/skywalking"
     );
   });
 

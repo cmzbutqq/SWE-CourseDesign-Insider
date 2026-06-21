@@ -74,11 +74,11 @@ set +a
 export DOCKER_BUILDKIT=0
 export COMPOSE_DOCKER_CLI_BUILD=0
 
-docker compose --profile observability --profile nodes up -d --build --remove-orphans
+docker compose --profile observability --profile nodes up -d --build --force-recreate --remove-orphans
 
 wait_for_http "http://localhost:${BACKEND_PORT:-18081}/api/overview"
 wait_for_http "http://localhost:${FRONTEND_PORT:-15173}"
-wait_for_http "http://localhost:${PROMETHEUS_PORT:-19090}/-/healthy"
+wait_for_http "http://localhost:${PROMETHEUS_PORT:-19090}/prometheus/-/healthy"
 wait_for_http "http://localhost:${GRAFANA_PORT:-13000}/api/health"
 wait_for_http "http://localhost:${SKYWALKING_UI_PORT:-18082}"
 
@@ -86,6 +86,6 @@ wait_for_contains "http://localhost:${BACKEND_PORT:-18081}/api/nodes" "app-node"
 wait_for_contains "http://localhost:${BACKEND_PORT:-18081}/api/nodes" "middleware-node"
 wait_for_contains "http://localhost:${BACKEND_PORT:-18081}/api/services" "SPRING_BOOT"
 wait_for_contains "http://localhost:${BACKEND_PORT:-18081}/api/services" "MYSQL"
-wait_for_contains "http://localhost:${PROMETHEUS_PORT:-19090}/api/v1/targets" "sample-service"
+wait_for_contains "http://localhost:${PROMETHEUS_PORT:-19090}/prometheus/api/v1/targets" "sample-service"
 
 echo "Deploy succeeded at commit $(git rev-parse --short HEAD)"

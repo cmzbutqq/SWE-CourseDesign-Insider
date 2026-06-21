@@ -7,6 +7,8 @@ export function resolveProxyTargets(env = process.env) {
     grafana: env.VITE_GRAFANA_PROXY_TARGET || "http://grafana:3000",
     prometheus:
       env.VITE_PROMETHEUS_PROXY_TARGET || "http://prometheus:9090",
+    skywalking:
+      env.VITE_SKYWALKING_PROXY_TARGET || "http://skywalking-ui:8080",
   };
 }
 
@@ -24,6 +26,10 @@ export function createProxyConfig(env = process.env) {
     },
     "/prometheus": {
       target: targets.prometheus,
+      changeOrigin: true
+    },
+    "/skywalking": {
+      target: targets.skywalking,
       changeOrigin: true
     }
   };

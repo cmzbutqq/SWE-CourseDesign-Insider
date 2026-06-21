@@ -83,6 +83,7 @@ jobs:
         run: |
           bash tests/skywalking-agent-source-test.sh
           bash tests/prometheus-route-prefix-test.sh
+          bash tests/deploy-observability-config-test.sh
 
   smoke-test:
     runs-on: ubuntu-latest
