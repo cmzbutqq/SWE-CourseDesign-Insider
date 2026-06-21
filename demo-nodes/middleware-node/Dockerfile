@@ -11,7 +11,19 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/monitor-agent ./cmd/a
 FROM prom/node-exporter:v1.8.2 AS node-exporter
 FROM nginx/nginx-prometheus-exporter:1.3.0 AS nginx-exporter
 FROM oliver006/redis_exporter:v1.67.0 AS redis-exporter
-FROM scut-monitoring-app-node AS skywalking-agent-source
+
+ARG SKYWALKING_AGENT_VERSION=9.4.0
+FROM eclipse-temurin:21-jre-jammy AS skywalking-agent-source
+ARG SKYWALKING_AGENT_VERSION
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /opt/skywalking \
+    && curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 \
+    "https://archive.apache.org/dist/skywalking/java-agent/${SKYWALKING_AGENT_VERSION}/apache-skywalking-java-agent-${SKYWALKING_AGENT_VERSION}.tgz" \
+    -o /tmp/skywalking.tgz \
+    && tar -xzf /tmp/skywalking.tgz -C /opt/skywalking --strip-components=1 \
+    && rm -f /tmp/skywalking.tgz
 
 ARG MAVEN_MIRROR_URL=https://maven.aliyun.com/repository/public
 FROM maven:3.9-eclipse-temurin-21 AS middleware-builder
