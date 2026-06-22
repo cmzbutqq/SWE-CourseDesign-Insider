@@ -2,7 +2,8 @@ export function resolveObservabilityConfig(env = import.meta.env) {
   return {
     grafanaBaseUrl: env.VITE_GRAFANA_BASE_URL || "/grafana",
     prometheusBaseUrl: env.VITE_PROMETHEUS_BASE_URL || "/prometheus",
-    skywalkingBaseUrl: env.VITE_SKYWALKING_BASE_URL || "/skywalking",
+    skywalkingBaseUrl:
+      env.VITE_SKYWALKING_BASE_URL || "http://localhost:18082",
     grafanaFrom: env.VITE_GRAFANA_FROM || "now-6h",
     grafanaTo: env.VITE_GRAFANA_TO || "now",
   };
