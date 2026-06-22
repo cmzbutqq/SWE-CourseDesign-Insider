@@ -42,6 +42,37 @@ wait_for_contains() {
   return 1
 }
 
+warmup_business_traces() {
+  local attempts="${1:-6}"
+
+  echo "Warming up business trace traffic from app-node..."
+  for ((i=1; i<=attempts; i++)); do
+    docker compose exec -T app-node sh -c \
+      "curl -fsS 'http://127.0.0.1:8081/api/demo-chain?user=deploy-warmup-${i}' >/dev/null" || true
+    sleep 2
+  done
+}
+
+wait_for_business_traces() {
+  local url="$1"
+  local needle="$2"
+  local retries="${3:-24}"
+  local delay="${4:-5}"
+
+  warmup_business_traces
+
+  for ((i=1; i<=retries; i++)); do
+    if curl -fsS "$url" 2>/dev/null | grep -q "$needle"; then
+      return 0
+    fi
+    echo "Still waiting for business traces ($i/$retries)..."
+    warmup_business_traces 2
+    sleep "$delay"
+  done
+
+  return 1
+}
+
 trap cleanup EXIT
 trap show_diagnostics ERR
 
@@ -87,6 +118,6 @@ wait_for_contains "http://localhost:${BACKEND_PORT:-18081}/api/nodes" "middlewar
 wait_for_contains "http://localhost:${BACKEND_PORT:-18081}/api/services" "SPRING_BOOT"
 wait_for_contains "http://localhost:${BACKEND_PORT:-18081}/api/services" "MYSQL"
 wait_for_contains "http://localhost:${PROMETHEUS_PORT:-19090}/prometheus/api/v1/targets" "sample-service"
-wait_for_contains "http://localhost:${BACKEND_PORT:-18081}/api/tracing/summary" "/api/demo-chain"
+wait_for_business_traces "http://localhost:${BACKEND_PORT:-18081}/api/tracing/summary" "/api/demo-chain"
 
 echo "Deploy succeeded at commit $(git rev-parse --short HEAD)"
