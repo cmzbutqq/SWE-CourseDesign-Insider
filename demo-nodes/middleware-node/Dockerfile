@@ -13,17 +13,15 @@ FROM nginx/nginx-prometheus-exporter:1.3.0 AS nginx-exporter
 FROM oliver006/redis_exporter:v1.67.0 AS redis-exporter
 
 ARG SKYWALKING_AGENT_VERSION=9.4.0
-ARG MAVEN_MIRROR_URL=https://maven.aliyun.com/repository/public
-FROM maven:3.9-eclipse-temurin-21 AS skywalking-agent-source
+FROM eclipse-temurin:21-jre-jammy AS skywalking-agent-source
 ARG SKYWALKING_AGENT_VERSION=9.4.0
-ARG MAVEN_MIRROR_URL=https://maven.aliyun.com/repository/public
-ENV MAVEN_MIRROR_URL=${MAVEN_MIRROR_URL}
-COPY infra/maven/mvn-with-mirror.sh /usr/local/bin/mvn-with-mirror.sh
-RUN sh /usr/local/bin/mvn-with-mirror.sh -q -Dtransitive=false \
-    dependency:get -Dartifact=org.apache.skywalking:apm-agent:${SKYWALKING_AGENT_VERSION} \
-    && mkdir -p /opt/skywalking \
-    && cp /root/.m2/repository/org/apache/skywalking/apm-agent/${SKYWALKING_AGENT_VERSION}/apm-agent-${SKYWALKING_AGENT_VERSION}.jar \
-    /opt/skywalking/skywalking-agent.jar
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates tar \
+    && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL "https://archive.apache.org/dist/skywalking/java-agent/${SKYWALKING_AGENT_VERSION}/apache-skywalking-java-agent-${SKYWALKING_AGENT_VERSION}.tgz" \
+    -o /tmp/skywalking-agent.tgz \
+    && mkdir -p /skywalking-agent \
+    && tar -xzf /tmp/skywalking-agent.tgz -C /skywalking-agent --strip-components=1 \
+    && rm /tmp/skywalking-agent.tgz
 
 ARG MAVEN_MIRROR_URL=https://maven.aliyun.com/repository/public
 FROM maven:3.9-eclipse-temurin-21 AS middleware-builder
@@ -48,7 +46,7 @@ COPY --from=node-exporter /bin/node_exporter /usr/local/bin/node_exporter
 COPY --from=nginx-exporter /usr/bin/nginx-prometheus-exporter /usr/local/bin/nginx-prometheus-exporter
 COPY --from=redis-exporter /redis_exporter /usr/local/bin/redis_exporter
 COPY --from=middleware-builder /src/demo-apps/middleware-service/target/middleware-service-0.0.1-SNAPSHOT.jar /opt/app/middleware-service.jar
-COPY --from=skywalking-agent-source /opt/skywalking /opt/skywalking
+COPY --from=skywalking-agent-source /skywalking-agent /opt/skywalking
 COPY demo-nodes/middleware-node/redis.conf /etc/redis/redis.conf
 COPY demo-nodes/middleware-node/nginx-default.conf /etc/nginx/sites-available/default
 COPY demo-nodes/middleware-node/start-middleware.sh /usr/local/bin/start-middleware.sh
