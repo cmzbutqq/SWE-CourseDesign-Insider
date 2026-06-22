@@ -45,7 +45,8 @@ describe("vite config", () => {
       },
       "/grafana": {
         target: "http://grafana.example:13000",
-        changeOrigin: true,
+        changeOrigin: false,
+        ws: true,
       },
       "/prometheus": {
         target: "http://prometheus.example:19090",

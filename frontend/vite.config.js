@@ -22,7 +22,8 @@ export function createProxyConfig(env = process.env) {
     },
     "/grafana": {
       target: targets.grafana,
-      changeOrigin: true
+      changeOrigin: false,
+      ws: true
     },
     "/prometheus": {
       target: targets.prometheus,
