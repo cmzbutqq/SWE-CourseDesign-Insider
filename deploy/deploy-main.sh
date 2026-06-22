@@ -87,5 +87,6 @@ wait_for_contains "http://localhost:${BACKEND_PORT:-18081}/api/nodes" "middlewar
 wait_for_contains "http://localhost:${BACKEND_PORT:-18081}/api/services" "SPRING_BOOT"
 wait_for_contains "http://localhost:${BACKEND_PORT:-18081}/api/services" "MYSQL"
 wait_for_contains "http://localhost:${PROMETHEUS_PORT:-19090}/prometheus/api/v1/targets" "sample-service"
+wait_for_contains "http://localhost:${BACKEND_PORT:-18081}/api/tracing/summary" "/api/demo-chain"
 
 echo "Deploy succeeded at commit $(git rev-parse --short HEAD)"

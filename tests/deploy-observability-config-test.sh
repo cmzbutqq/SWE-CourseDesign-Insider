@@ -22,6 +22,7 @@ assert_not_exists() {
 
 assert_contains "deploy/deploy-main.sh" 'wait_for_http "http://localhost:${PROMETHEUS_PORT:-19090}/prometheus/-/healthy"'
 assert_contains "deploy/deploy-main.sh" 'wait_for_contains "http://localhost:${PROMETHEUS_PORT:-19090}/prometheus/api/v1/targets" "sample-service"'
+assert_contains "deploy/deploy-main.sh" 'wait_for_contains "http://localhost:${BACKEND_PORT:-18081}/api/tracing/summary" "/api/demo-chain"'
 assert_contains "docker-compose.yml" 'VITE_SKYWALKING_BASE_URL: ${PUBLIC_SCHEME:-http}://${PUBLIC_HOST:-localhost}:${SKYWALKING_UI_PORT:-18082}'
 assert_contains "docker-compose.yml" 'VITE_SKYWALKING_PROXY_TARGET: http://skywalking-ui:8080'
 assert_contains "frontend/vite.config.js" '"/skywalking"'

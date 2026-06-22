@@ -78,4 +78,9 @@ if ! wait_for_contains "http://localhost:19090/prometheus/api/v1/targets" "sampl
   exit 1
 fi
 
+if ! wait_for_contains "http://localhost:18081/api/tracing/summary" "/api/demo-chain" 36 5; then
+  echo "skywalking did not surface business traces"
+  exit 1
+fi
+
 echo "smoke test passed"
