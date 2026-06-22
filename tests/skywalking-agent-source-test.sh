@@ -21,12 +21,14 @@ assert_not_contains() {
   fi
 }
 
-assert_contains "demo-nodes/app-node/Dockerfile" "dependency:get -Dartifact=org.apache.skywalking:apm-agent:"
-assert_contains "demo-nodes/app-node/Dockerfile" "MAVEN_MIRROR_URL"
-assert_not_contains "demo-nodes/app-node/Dockerfile" "repo1.maven.org/maven2/org/apache/skywalking/apm-agent"
+assert_contains "demo-nodes/app-node/Dockerfile" "archive.apache.org/dist/skywalking/java-agent/"
+assert_contains "demo-nodes/app-node/Dockerfile" "apache-skywalking-java-agent-\${SKYWALKING_AGENT_VERSION}.tgz"
+assert_contains "demo-nodes/app-node/Dockerfile" "COPY --from=skywalking-agent-source /skywalking-agent /opt/skywalking"
+assert_not_contains "demo-nodes/app-node/Dockerfile" "org.apache.skywalking:apm-agent"
 
-assert_contains "demo-nodes/middleware-node/Dockerfile" "dependency:get -Dartifact=org.apache.skywalking:apm-agent:"
-assert_contains "demo-nodes/middleware-node/Dockerfile" "MAVEN_MIRROR_URL"
-assert_not_contains "demo-nodes/middleware-node/Dockerfile" "repo1.maven.org/maven2/org/apache/skywalking/apm-agent"
+assert_contains "demo-nodes/middleware-node/Dockerfile" "archive.apache.org/dist/skywalking/java-agent/"
+assert_contains "demo-nodes/middleware-node/Dockerfile" "apache-skywalking-java-agent-\${SKYWALKING_AGENT_VERSION}.tgz"
+assert_contains "demo-nodes/middleware-node/Dockerfile" "COPY --from=skywalking-agent-source /skywalking-agent /opt/skywalking"
+assert_not_contains "demo-nodes/middleware-node/Dockerfile" "org.apache.skywalking:apm-agent"
 
 echo "skywalking agent source looks stable"
