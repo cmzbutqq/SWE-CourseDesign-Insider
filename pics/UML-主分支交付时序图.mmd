@@ -1,0 +1,27 @@
+sequenceDiagram
+autonumber
+
+participant Dev as push main
+participant Actions as GitHub Actions
+participant Pack as packaging-test
+participant Smoke as smoke-test
+participant Deploy as deploy-main.sh
+participant Server as 目标服务器
+participant Runtime as 平台运行环境
+
+Dev->>Actions: 触发 deploy-main.yml
+Actions->>Pack: 检查 SkyWalking / Prometheus / 部署配置
+Pack-->>Actions: 通过
+
+Actions->>Smoke: 启动完整环境并执行冒烟
+Smoke->>Runtime: 验证节点注册、服务发现、targets、Trace
+Smoke-->>Actions: 通过
+
+Actions->>Deploy: SSH 执行部署脚本
+Deploy->>Server: git fetch + checkout main
+Deploy->>Runtime: docker compose up -d --build
+Deploy->>Runtime: 等待前后端、Prometheus、Grafana、SkyWalking 健康
+Deploy->>Runtime: warmup /api/demo-chain
+Deploy->>Runtime: 等待业务 Trace 出现
+Runtime-->>Deploy: 观测闭环成立
+Deploy-->>Actions: 部署成功

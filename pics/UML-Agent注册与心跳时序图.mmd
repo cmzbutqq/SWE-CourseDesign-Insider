@@ -1,0 +1,42 @@
+sequenceDiagram
+autonumber
+
+participant Main as agent/main.go
+participant Config as config.Load
+participant System as system.Collect
+participant Discovery as discovery.Discoverer
+participant Metrics as metrics.Collect
+participant HTTP as httpclient.Client
+participant Backend as Backend API
+
+Main->>Config: 读取节点名、版本、时间间隔
+
+Main->>System: Collect hostname / IP / OS
+Main->>Discovery: 执行 ps 与 ss -ltnp
+Discovery-->>Main: 已识别服务目录
+Main->>HTTP: POST /api/agents/register
+HTTP->>Backend: RegisterPayload
+Backend-->>HTTP: NodeDetailResponse
+
+Main->>Metrics: 首次采集 CPU / 内存 / 磁盘 / 网络
+Main->>HTTP: POST /api/agents/heartbeat
+HTTP->>Backend: HeartbeatRequest
+Backend-->>HTTP: NodeSummaryResponse
+
+loop 每 15 秒
+  Main->>System: Collect hostname / IP / OS
+  Main->>Discovery: 重新扫描进程与监听端口
+  Discovery-->>Main: 更新服务目录
+  Main->>HTTP: POST /api/agents/register
+  HTTP->>Backend: RegisterPayload
+  Backend-->>HTTP: NodeDetailResponse
+end
+
+loop 每 10 秒
+  Main->>Metrics: 采集资源指标
+  Main->>HTTP: POST /api/agents/heartbeat
+  HTTP->>Backend: HeartbeatRequest
+  Backend-->>HTTP: NodeSummaryResponse
+end
+
+note over Backend: register 更新节点与服务目录\nheartbeat 更新状态、心跳时间与资源时序

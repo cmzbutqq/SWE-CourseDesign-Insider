@@ -1,0 +1,32 @@
+stateDiagram-v2
+
+[*] --> Registered : registerNode()
+Registered --> Online : 初始 status = ONLINE
+
+state "Online" as Online
+state "Warning" as Warning
+state "Offline" as Offline
+
+Online --> Warning : 超过 45s 未收到新心跳
+Warning --> Warning : 超过 90s 未收到新心跳\n effectiveStatus = WARNING
+Warning --> Online : 后续 heartbeat 恢复
+
+Online --> Offline : heartbeat.status = OFFLINE
+Warning --> Offline : heartbeat.status = OFFLINE
+Offline --> Online : heartbeat.status = ONLINE
+
+note right of Online
+lastHeartbeatAt 存在
+且未达到超时阈值
+end note
+
+note right of Warning
+buildStatusSummary 返回
+“心跳延迟”或“心跳超时”
+高风险节点进入异常入口
+end note
+
+note right of Registered
+节点已经入库
+服务目录已同步
+end note

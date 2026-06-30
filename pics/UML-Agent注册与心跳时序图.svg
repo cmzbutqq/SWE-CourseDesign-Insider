@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2280" height="1520" viewBox="0 0 2280 1520">
+<defs>
+<marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+<path d="M0,0 L12,6 L0,12 z" fill="#334155"/>
+</marker>
+<filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+<feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#0f172a" flood-opacity="0.08"/>
+</filter>
+</defs>
+<rect width="2280" height="1520" fill="#ffffff"/>
+<text x="1140.0" y="42" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="30" font-weight="700" fill="#0f172a">Agent 注册与心跳时序图</text>
+<rect x="65.0" y="70" width="170" height="58" rx="18" fill="#eff6ff" stroke="#1d4ed8" stroke-width="2"/>
+<text x="150" y="106" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="22" font-weight="700" fill="#0f172a">main.go</text>
+<line x1="150" y1="128" x2="150" y2="1340" stroke="#94a3b8" stroke-width="2" stroke-dasharray="10 8"/>
+<rect x="365.0" y="70" width="170" height="58" rx="18" fill="#eff6ff" stroke="#1d4ed8" stroke-width="2"/>
+<text x="450" y="106" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="22" font-weight="700" fill="#0f172a">config</text>
+<line x1="450" y1="128" x2="450" y2="1340" stroke="#94a3b8" stroke-width="2" stroke-dasharray="10 8"/>
+<rect x="675.0" y="70" width="170" height="58" rx="18" fill="#eff6ff" stroke="#1d4ed8" stroke-width="2"/>
+<text x="760" y="106" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="22" font-weight="700" fill="#0f172a">system</text>
+<line x1="760" y1="128" x2="760" y2="1340" stroke="#94a3b8" stroke-width="2" stroke-dasharray="10 8"/>
+<rect x="985.0" y="70" width="170" height="58" rx="18" fill="#eff6ff" stroke="#1d4ed8" stroke-width="2"/>
+<text x="1070" y="106" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="22" font-weight="700" fill="#0f172a">discovery</text>
+<line x1="1070" y1="128" x2="1070" y2="1340" stroke="#94a3b8" stroke-width="2" stroke-dasharray="10 8"/>
+<rect x="1295.0" y="70" width="170" height="58" rx="18" fill="#eff6ff" stroke="#1d4ed8" stroke-width="2"/>
+<text x="1380" y="106" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="22" font-weight="700" fill="#0f172a">metrics</text>
+<line x1="1380" y1="128" x2="1380" y2="1340" stroke="#94a3b8" stroke-width="2" stroke-dasharray="10 8"/>
+<rect x="1605.0" y="70" width="170" height="58" rx="18" fill="#eff6ff" stroke="#1d4ed8" stroke-width="2"/>
+<text x="1690" y="106" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="22" font-weight="700" fill="#0f172a">httpclient</text>
+<line x1="1690" y1="128" x2="1690" y2="1340" stroke="#94a3b8" stroke-width="2" stroke-dasharray="10 8"/>
+<rect x="1965.0" y="70" width="170" height="58" rx="18" fill="#eff6ff" stroke="#1d4ed8" stroke-width="2"/>
+<text x="2050" y="106" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="22" font-weight="700" fill="#0f172a">Backend API</text>
+<line x1="2050" y1="128" x2="2050" y2="1340" stroke="#94a3b8" stroke-width="2" stroke-dasharray="10 8"/>
+<line x1="150" y1="180" x2="450" y2="180" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="205.5" y="146.0" width="189" height="34" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="300.0" y="169.0" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="18" font-weight="500" fill="#0f172a">读取节点名/版本/间隔</text>
+<line x1="150" y1="262" x2="760" y2="262" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="248.0" y="228.0" width="414" height="34" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="455.0" y="251.0" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="18" font-weight="500" fill="#0f172a">Collect hostname / IP / OS</text>
+<line x1="150" y1="344" x2="1070" y2="344" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="478.0" y="310.0" width="264" height="34" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="610.0" y="333.0" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="18" font-weight="500" fill="#0f172a">ps + ss -ltnp 扫描</text>
+<line x1="1070" y1="426" x2="150" y2="426" stroke="#334155" stroke-width="2" stroke-dasharray="10 8" marker-end="url(#arrow)"/>
+<rect x="545.5" y="392.0" width="129" height="34" rx="12" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="610.0" y="415.0" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="18" font-weight="500" fill="#0f172a">已识别服务目录</text>
+<line x1="150" y1="508" x2="1690" y2="508" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="720.5" y="474.0" width="399" height="34" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="920.0" y="497.0" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="18" font-weight="500" fill="#0f172a">POST /api/agents/register</text>
+<line x1="1690" y1="590" x2="2050" y2="590" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="1745.5" y="556.0" width="249" height="34" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="1870.0" y="579.0" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="18" font-weight="500" fill="#0f172a">RegisterPayload</text>
+<line x1="2050" y1="672" x2="1690" y2="672" stroke="#334155" stroke-width="2" stroke-dasharray="10 8" marker-end="url(#arrow)"/>
+<rect x="1723.0" y="638.0" width="294" height="34" rx="12" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="1870.0" y="661.0" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="18" font-weight="500" fill="#0f172a">NodeDetailResponse</text>
+<rect x="70" y="724" width="2140" height="250" rx="20" fill="#f8fafc" stroke="#94a3b8" stroke-width="2" stroke-dasharray="10 8"/>
+<text x="150" y="754" text-anchor="start" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="22" font-weight="700" fill="#0f172a">每 15 秒重新注册</text>
+<line x1="150" y1="802" x2="760" y2="802" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="390.5" y="768.0" width="129" height="34" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="455.0" y="791.0" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="18" font-weight="500" fill="#0f172a">Collect</text>
+<line x1="150" y1="867" x2="1070" y2="867" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="556.0" y="833.0" width="108" height="34" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="610.0" y="856.0" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="18" font-weight="500" fill="#0f172a">重新扫描</text>
+<line x1="150" y1="932" x2="1690" y2="932" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="720.5" y="898.0" width="399" height="34" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="920.0" y="921.0" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="18" font-weight="500" fill="#0f172a">POST /api/agents/register</text>
+<rect x="70" y="1012" width="2140" height="320" rx="20" fill="#f8fafc" stroke="#94a3b8" stroke-width="2" stroke-dasharray="10 8"/>
+<text x="150" y="1042" text-anchor="start" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="22" font-weight="700" fill="#0f172a">每 10 秒发送心跳</text>
+<line x1="150" y1="1097" x2="1380" y2="1097" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="595.5" y="1063.0" width="339" height="34" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="765.0" y="1086.0" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="18" font-weight="500" fill="#0f172a">采集 CPU / 内存 / 磁盘 / 网络</text>
+<line x1="150" y1="1167" x2="1690" y2="1167" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="713.0" y="1133.0" width="414" height="34" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="920.0" y="1156.0" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="18" font-weight="500" fill="#0f172a">POST /api/agents/heartbeat</text>
+<line x1="1690" y1="1212" x2="2050" y2="1212" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="1738.0" y="1178.0" width="264" height="34" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="1870.0" y="1201.0" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="18" font-weight="500" fill="#0f172a">HeartbeatRequest</text>
+<line x1="2050" y1="1267" x2="1690" y2="1267" stroke="#334155" stroke-width="2" stroke-dasharray="10 8" marker-end="url(#arrow)"/>
+<rect x="1715.5" y="1233.0" width="309" height="34" rx="12" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="1870.0" y="1256.0" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="18" font-weight="500" fill="#0f172a">NodeSummaryResponse</text>
+<rect x="1360" y="1360" width="770" height="124" rx="18" fill="#fffaf4" stroke="#fdba74" stroke-width="2"/>
+<text x="1378" y="1394" text-anchor="start" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="20" font-weight="400" fill="#9a3412"><tspan x="1378" dy="0">register 负责更新节点主数据与服务目录。</tspan><tspan x="1378" dy="26">heartbeat 负责刷新 lastHeartbeatAt、状态历史和资源时序。</tspan><tspan x="1378" dy="26">两个循环分开运行，让服务识别频率和资源采样频率可以独立调整。</tspan></text>
+</svg>

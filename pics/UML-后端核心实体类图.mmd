@@ -1,0 +1,100 @@
+classDiagram
+direction LR
+
+class AgentController {
+  +POST /api/agents/register()
+  +POST /api/agents/heartbeat()
+}
+
+class PortalController {
+  +GET /api/overview()
+  +GET /api/nodes()
+  +GET /api/nodes/{id}()
+  +GET /api/services()
+  +GET /api/services/{id}()
+  +GET /api/trends()
+  +GET /api/tracing/summary()
+}
+
+class NodeRegistryService {
+  +registerNode()
+  +heartbeat()
+  +overview()
+  +listNodes()
+  +getNode()
+  +listServices()
+  +getService()
+  +getTrends()
+  +saveMetricsSnapshot()
+}
+
+class SkyWalkingQueryService {
+  +loadTracingSummary()
+  +loadLatestTracePreview()
+}
+
+class ManagedNode {
+  +Long id
+  +String nodeName
+  +String hostname
+  +String ipAddress
+  +String osName
+  +String agentVersion
+  +String status
+  +Instant lastSeenAt
+  +Instant lastHeartbeatAt
+}
+
+class DiscoveredService {
+  +Long id
+  +String serviceName
+  +String serviceType
+  +Integer port
+  +String processName
+  +String metricsPath
+  +Integer metricsPort
+}
+
+class NodeMetrics {
+  +Long id
+  +Instant collectedAt
+  +Double cpuUsage
+  +Double memoryUsage
+  +Double diskUsage
+  +Double networkRxMbps
+  +Double networkTxMbps
+}
+
+class HeartbeatEvent {
+  +Long id
+  +String status
+  +Instant createdAt
+}
+
+class MetricsSnapshot {
+  +Long id
+  +Instant timestamp
+  +long totalNodes
+  +long onlineNodes
+  +long warningNodes
+  +long totalServices
+  +long abnormalServices
+  +long unresolvedAlerts
+}
+
+AgentController --> NodeRegistryService : 写入注册/心跳
+PortalController --> NodeRegistryService : 读取聚合结果
+PortalController --> SkyWalkingQueryService : 读取 Trace 摘要
+
+ManagedNode "1" --> "*" DiscoveredService : services
+ManagedNode "1" --> "*" NodeMetrics : metrics
+ManagedNode "1" --> "*" HeartbeatEvent : events
+
+NodeRegistryService --> ManagedNode : 管理节点主数据
+NodeRegistryService --> DiscoveredService : 同步服务目录
+NodeRegistryService --> NodeMetrics : 保存资源采样
+NodeRegistryService --> HeartbeatEvent : 记录状态历史
+NodeRegistryService --> MetricsSnapshot : 保存趋势快照
+
+note for NodeRegistryService "负责状态归一化、异常判定、快捷链接生成和趋势聚合"
+note for SkyWalkingQueryService "通过 GraphQL 查询 SkyWalking OAP\n过滤业务 Trace 并生成结构化摘要"

@@ -1,0 +1,55 @@
+flowchart LR
+
+subgraph Workbench["统一工作台页面"]
+  Overview["总览"]
+  Nodes["节点页"]
+  NodeDetail["节点详情"]
+  Services["服务页"]
+  ServiceDetail["服务详情"]
+  Tracing["链路页"]
+  Debug["调试页"]
+end
+
+subgraph API["平台后端 API"]
+  O["/api/overview"]
+  R["/api/trends"]
+  N["/api/nodes"]
+  ND["/api/nodes/{id}"]
+  S["/api/services"]
+  SD["/api/services/{id}"]
+  T["/api/tracing/summary"]
+end
+
+subgraph Native["原生观测系统"]
+  Grafana["Grafana"]
+  Prom["Prometheus"]
+  Sky["SkyWalking"]
+end
+
+Overview --> O
+Overview --> R
+Overview -.回跳/嵌入.-> Grafana
+Overview -.回跳/嵌入.-> Prom
+Overview -.回跳/嵌入.-> Sky
+
+Nodes --> N
+NodeDetail --> ND
+NodeDetail -.资源/原始查询.-> Grafana
+NodeDetail -.Targets/Up 查询.-> Prom
+NodeDetail -.服务拓扑.-> Sky
+
+Services --> S
+ServiceDetail --> SD
+ServiceDetail -.运行指标.-> Grafana
+ServiceDetail -.PromQL 调试.-> Prom
+ServiceDetail -.调用链入口.-> Sky
+
+Tracing --> T
+Tracing -.完整 Trace.-> Sky
+
+Debug -.抓取摘要.-> Prom
+
+note["前台先展示聚合摘要，再引导进入原生后台核对细节"]:::note
+Overview --- note
+
+classDef note fill:#fff7ed,stroke:#fb923c,color:#7c2d12

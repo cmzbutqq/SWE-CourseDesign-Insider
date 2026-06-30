@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1880" height="980" viewBox="0 0 1880 980">
+<defs>
+<marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+<path d="M0,0 L12,6 L0,12 z" fill="#334155"/>
+</marker>
+<filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+<feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#0f172a" flood-opacity="0.08"/>
+</filter>
+</defs>
+<rect width="1880" height="980" fill="#ffffff"/>
+<text x="940.0" y="42" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="30" font-weight="700" fill="#0f172a">节点状态判定状态图</text>
+<rect x="70" y="120" width="1740" height="620" rx="30" fill="#f8fafc" stroke="#cbd5e1" stroke-width="2"/>
+<circle cx="120" cy="310" r="18" fill="#0f172a"/>
+<rect x="190" y="220" width="300" height="142" rx="22" fill="#ffffff" stroke="none" stroke-width="0"/>
+<rect x="190" y="220" width="300" height="60" rx="22" fill="#dbeafe" stroke="none" stroke-width="0"/>
+<rect x="190" y="258" width="300" height="24" fill="#dbeafe" stroke="none"/>
+<rect x="190" y="220" width="300" height="142" rx="22" fill="none" stroke="#334155" stroke-width="2"/>
+<text x="340.0" y="258" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="24" font-weight="700" fill="#0f172a">Registered</text>
+<text x="340.0" y="310.0" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="20" font-weight="400" fill="#0f172a">registerNode() 已入库</text>
+<text x="340.0" y="338.0" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="20" font-weight="400" fill="#0f172a">服务目录已同步</text>
+<rect x="600" y="220" width="320" height="142" rx="22" fill="#ffffff" stroke="none" stroke-width="0"/>
+<rect x="600" y="220" width="320" height="60" rx="22" fill="#dcfce7" stroke="none" stroke-width="0"/>
+<rect x="600" y="258" width="320" height="24" fill="#dcfce7" stroke="none"/>
+<rect x="600" y="220" width="320" height="142" rx="22" fill="none" stroke="#334155" stroke-width="2"/>
+<text x="760.0" y="258" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="24" font-weight="700" fill="#0f172a">Online</text>
+<text x="760.0" y="310.0" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="20" font-weight="400" fill="#0f172a">lastHeartbeatAt 存在</text>
+<text x="760.0" y="338.0" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="20" font-weight="400" fill="#0f172a">且未达到超时阈值</text>
+<rect x="1040" y="220" width="360" height="170" rx="22" fill="#ffffff" stroke="none" stroke-width="0"/>
+<rect x="1040" y="220" width="360" height="60" rx="22" fill="#fef3c7" stroke="none" stroke-width="0"/>
+<rect x="1040" y="258" width="360" height="24" fill="#fef3c7" stroke="none"/>
+<rect x="1040" y="220" width="360" height="170" rx="22" fill="none" stroke="#334155" stroke-width="2"/>
+<text x="1220.0" y="258" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="24" font-weight="700" fill="#0f172a">Warning</text>
+<text x="1220.0" y="310.0" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="20" font-weight="400" fill="#0f172a">超过 45 秒未收到新心跳</text>
+<text x="1220.0" y="338.0" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="20" font-weight="400" fill="#0f172a">继续超时后</text>
+<text x="1220.0" y="366.0" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="20" font-weight="400" fill="#0f172a">effectiveStatus = WARNING</text>
+<rect x="790" y="520" width="360" height="142" rx="22" fill="#ffffff" stroke="none" stroke-width="0"/>
+<rect x="790" y="520" width="360" height="60" rx="22" fill="#fee2e2" stroke="none" stroke-width="0"/>
+<rect x="790" y="558" width="360" height="24" fill="#fee2e2" stroke="none"/>
+<rect x="790" y="520" width="360" height="142" rx="22" fill="none" stroke="#334155" stroke-width="2"/>
+<text x="970.0" y="558" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="24" font-weight="700" fill="#0f172a">Offline</text>
+<text x="970.0" y="610.0" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="20" font-weight="400" fill="#0f172a">heartbeat.status = OFFLINE</text>
+<text x="970.0" y="638.0" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="20" font-weight="400" fill="#0f172a">等待后续 ONLINE 心跳恢复</text>
+<line x1="138" y1="310" x2="190" y2="310" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="165" y="280" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="14" font-weight="500" fill="#0f172a">registerNode()</text>
+<line x1="490" y1="310" x2="600" y2="310" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="545" y="280" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="14" font-weight="500" fill="#0f172a">初始 ONLINE</text>
+<line x1="920" y1="310" x2="1040" y2="310" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="980" y="280" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="14" font-weight="500" fill="#0f172a">&gt; 45s 未收到心跳</text>
+<polyline points="1220,220 1220,190 760,190 760,220" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="990" y="167" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="14" font-weight="500" fill="#0f172a">收到后续心跳</text>
+<polyline points="760,362 760,450 840,450 840,520" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="645" y="445" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="14" font-weight="500" fill="#0f172a">status = OFFLINE</text>
+<polyline points="1220,390 1220,470 1080,470 1080,520" fill="none" stroke="#334155" stroke-width="2" stroke-dasharray="10 8" marker-end="url(#arrow)"/>
+<text x="1210" y="439" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="14" font-weight="500" fill="#0f172a">继续超时 / OFFLINE</text>
+<line x1="920" y1="520" x2="920" y2="362" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="985" y="445" text-anchor="middle" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="14" font-weight="500" fill="#0f172a">ONLINE 恢复</text>
+<rect x="220" y="790" width="1440" height="124" rx="18" fill="#fffaf4" stroke="#fdba74" stroke-width="2"/>
+<text x="238" y="824" text-anchor="start" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',Arial,sans-serif" font-size="20" font-weight="400" fill="#9a3412"><tspan x="238" dy="0">节点状态由心跳时间差与 heartbeat.status 共同决定。</tspan><tspan x="238" dy="26">45 秒未收到新心跳进入 Warning；直接上报 OFFLINE 或持续超时均进入 Offline。</tspan><tspan x="238" dy="26">收到后续 ONLINE 心跳后恢复，异常入口页据此把节点列为高风险对象。</tspan></text>
+</svg>
