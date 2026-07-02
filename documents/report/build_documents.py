@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import shutil
+import unicodedata
 from pathlib import Path
 
+from PIL import Image
 from docx import Document
 from docx.enum.table import WD_ALIGN_VERTICAL, WD_TABLE_ALIGNMENT
-from docx.enum.text import WD_BREAK
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
@@ -23,13 +24,20 @@ LEADER = "陈梦泽"
 MEMBERS = "陈紫暄、曹丹"
 MENTOR = "苏锦钿、黄平"
 COLLEGE = "计算机科学与工程学院"
-MAJOR = "软件工程"
+MAJOR = "计算机科学与技术"
 COURSE_CODE = "045102191"
 CREDITS = "2.0"
 START_DATE = "2026年3月"
 REPO_URL = "https://github.com/cmzbutqq/SWE-CourseDesign-Insider"
 DEPLOY_PUBLIC_URL = "http://103.236.55.76/"
 DEPLOY_EXPIRES = "2026年07月14日"
+COVER_TITLE = " 软件工程课程设计报告书"
+BODY_FONT = "宋体"
+TITLE_FONT = "黑体"
+TABLE_BORDER_COLOR = "9EA7B3"
+TABLE_HEADER_FILL = "E6EBF2"
+TABLE_ALT_FILL = "F7F9FC"
+IMAGE_MAX_PAGE_HEIGHT_RATIO = 0.6
 
 
 def para(text: str) -> dict:
@@ -42,6 +50,215 @@ def image(path: str, width: float, caption: str) -> dict:
 
 def table(rows: list[list[str]], widths: list[float] | None = None) -> dict:
     return {"type": "table", "rows": rows, "widths": widths}
+
+
+def set_run_style(
+    run,
+    *,
+    font_name: str,
+    size_pt: float,
+    bold: bool | None = None,
+    underline: bool | None = None,
+    italic: bool | None = None,
+) -> None:
+    run.font.name = font_name
+    run.font.size = Pt(size_pt)
+    if bold is not None:
+        run.bold = bold
+    if underline is not None:
+        run.underline = underline
+    if italic is not None:
+        run.italic = italic
+    r_pr = run._element.get_or_add_rPr()
+    r_fonts = r_pr.get_or_add_rFonts()
+    r_fonts.set(qn("w:ascii"), font_name)
+    r_fonts.set(qn("w:hAnsi"), font_name)
+    r_fonts.set(qn("w:eastAsia"), font_name)
+
+
+def display_width(text: str) -> int:
+    return sum(2 if unicodedata.east_asian_width(char) in {"W", "F"} else 1 for char in text)
+
+
+def padded_cover_value(value: str, target_width: int) -> str:
+    text = f" {value}"
+    padding = max(target_width - display_width(text), 1)
+    return text + (" " * padding)
+
+
+def padded_text_for_runs(text: str, runs) -> str:
+    slot_total = sum(len(run.text or "") for run in runs)
+    if len(text) >= slot_total:
+        return text
+    return text + (" " * (slot_total - len(text)))
+
+
+def split_text_by_lengths(text: str, lengths: list[int]) -> list[str]:
+    if not lengths:
+        return []
+    pieces: list[str] = []
+    cursor = 0
+    for index, length in enumerate(lengths):
+        if index == len(lengths) - 1:
+            pieces.append(text[cursor:])
+        else:
+            pieces.append(text[cursor:cursor + length])
+            cursor += length
+    return pieces
+
+
+def rewrite_runs_preserving_structure(runs, text: str) -> None:
+    lengths = [len(run.text or "") for run in runs]
+    if not lengths:
+        return
+    pieces = split_text_by_lengths(text, lengths)
+    for run, piece in zip(runs, pieces):
+        run.text = piece
+
+
+def set_cover_line(paragraph: Paragraph, text: str) -> None:
+    rewrite_runs_preserving_structure(paragraph.runs, text)
+
+
+def set_cover_field(paragraph: Paragraph, label: str, value: str, target_width: int) -> None:
+    label_runs = [run for run in paragraph.runs if not run.underline]
+    underline_runs = [run for run in paragraph.runs if run.underline]
+    rewrite_runs_preserving_structure(label_runs, padded_text_for_runs(label, label_runs))
+    padded_value = padded_text_for_runs(f" {value}", underline_runs)
+    rewrite_runs_preserving_structure(underline_runs, padded_value)
+
+
+def set_cell_margins(cell, *, top: int = 90, bottom: int = 90, start: int = 120, end: int = 120) -> None:
+    tc_pr = cell._tc.get_or_add_tcPr()
+    tc_mar = tc_pr.first_child_found_in("w:tcMar")
+    if tc_mar is None:
+        tc_mar = OxmlElement("w:tcMar")
+        tc_pr.append(tc_mar)
+    for key, value in {"top": top, "bottom": bottom, "start": start, "end": end}.items():
+        node = tc_mar.find(qn(f"w:{key}"))
+        if node is None:
+            node = OxmlElement(f"w:{key}")
+            tc_mar.append(node)
+        node.set(qn("w:w"), str(value))
+        node.set(qn("w:type"), "dxa")
+
+
+def set_cell_shading(cell, fill: str | None) -> None:
+    tc_pr = cell._tc.get_or_add_tcPr()
+    shd = tc_pr.first_child_found_in("w:shd")
+    if fill is None:
+        if shd is not None:
+            tc_pr.remove(shd)
+        return
+    if shd is None:
+        shd = OxmlElement("w:shd")
+        tc_pr.append(shd)
+    shd.set(qn("w:val"), "clear")
+    shd.set(qn("w:color"), "auto")
+    shd.set(qn("w:fill"), fill)
+
+
+def set_table_borders(table_obj: Table, color: str = TABLE_BORDER_COLOR, size: int = 6) -> None:
+    tbl_pr = table_obj._tbl.tblPr
+    borders = tbl_pr.first_child_found_in("w:tblBorders")
+    if borders is None:
+        borders = OxmlElement("w:tblBorders")
+        tbl_pr.append(borders)
+    for edge in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        element = borders.find(qn(f"w:{edge}"))
+        if element is None:
+            element = OxmlElement(f"w:{edge}")
+            borders.append(element)
+        element.set(qn("w:val"), "single")
+        element.set(qn("w:sz"), str(size))
+        element.set(qn("w:space"), "0")
+        element.set(qn("w:color"), color)
+
+
+def mark_header_row(row) -> None:
+    tr_pr = row._tr.get_or_add_trPr()
+    header = tr_pr.find(qn("w:tblHeader"))
+    if header is None:
+        header = OxmlElement("w:tblHeader")
+        tr_pr.append(header)
+    header.set(qn("w:val"), "true")
+
+
+def page_height_inches(document: Document) -> float:
+    section = document.sections[0]
+    return section.page_height.inches
+
+
+def usable_page_width_inches(document: Document) -> float:
+    section = document.sections[0]
+    return section.page_width.inches - section.left_margin.inches - section.right_margin.inches
+
+
+def picture_kwargs(document: Document, image_path: Path, width_in: float) -> dict:
+    with Image.open(image_path) as img:
+        pixel_width, pixel_height = img.size
+    default_height = width_in * pixel_height / pixel_width
+    max_height = page_height_inches(document) * IMAGE_MAX_PAGE_HEIGHT_RATIO
+    if default_height > max_height:
+        return {"height": Inches(max_height)}
+    return {"width": Inches(width_in)}
+
+
+def normalize_weights(weights: list[float]) -> list[float]:
+    positive = [max(weight, 0.0) for weight in weights]
+    total = sum(positive)
+    if total <= 0:
+        return [1 / len(weights)] * len(weights)
+    return [weight / total for weight in positive]
+
+
+def table_min_column_width(col_count: int) -> float:
+    if col_count <= 2:
+        return 1.2
+    if col_count == 3:
+        return 1.0
+    if col_count == 4:
+        return 0.86
+    return 0.72
+
+
+def resolve_column_widths(document: Document, rows: list[list[str]], width_hints: list[float] | None = None) -> list[float]:
+    col_count = len(rows[0])
+    if width_hints and len(width_hints) >= col_count:
+        weights = [float(value) for value in width_hints[:col_count]]
+    else:
+        weights = []
+        for col_index in range(col_count):
+            max_width = max(display_width(row[col_index].replace("`", "")) for row in rows)
+            weights.append(min(max(max_width, 8), 28))
+
+    total_width = usable_page_width_inches(document) - 0.2
+    min_width = table_min_column_width(col_count)
+    widths = [total_width * ratio for ratio in normalize_weights(weights)]
+    widths = [max(width, min_width) for width in widths]
+    overflow = sum(widths) - total_width
+    if overflow > 0:
+        reducible = [max(width - min_width, 0) for width in widths]
+        reducible_total = sum(reducible)
+        if reducible_total > 0:
+            widths = [
+                width - overflow * reducible[index] / reducible_total
+                for index, width in enumerate(widths)
+            ]
+    return widths
+
+
+def apply_column_widths(table_obj: Table, widths: list[float]) -> None:
+    for col_index, width_in in enumerate(widths):
+        width = Inches(width_in)
+        if col_index < len(table_obj.columns):
+            table_obj.columns[col_index].width = width
+        for cell in table_obj.columns[col_index].cells:
+            cell.width = width
+
+
+def set_paragraph_text_like_existing(paragraph: Paragraph, text: str) -> None:
+    rewrite_runs_preserving_structure(paragraph.runs, text)
 
 
 REPORT_CONTENT = {
@@ -70,10 +287,11 @@ REPORT_CONTENT = {
             ],
             [1.35, 4.8],
         ),
-        image("pics/总览.png", 5.8, "统一工作台总览"),
+        image("pics/总览.png", 6.2, "统一工作台总览"),
     ],
     "1.1 项目背景": [
         para("课题来源于中国电信广东公司 2026 年实训课题二。原始要求很直接：在主机侧部署 Agent，自动识别服务和组件，把主机信息、资源利用率、技术栈、指标和调用链放到一个监控台里展示。"),
+        para("按当前实现口径，平台统一收拢了三类信息：节点主机名、IP、操作系统、Agent 版本等基础信息；CPU、内存、磁盘、网络等主机资源利用率；服务目录、指标抓取入口和业务调用链等服务侧信息。这三类信息与题目原始要求是一一对应的。"),
         para("仓库当前的实现把自研 Agent、聚合后端、前端工作台和 Prometheus、Grafana、SkyWalking 串成了一套课程级闭环系统。数据来源、排障路径和系统边界都能在当前代码、脚本和页面中对应起来。"),
         para("从课程定位看，这个题目考察的不是单一语言编码能力，而是软件工程全流程能力：需求拆解、模块划分、接口设计、容器化运行、自动化验证和团队协作都要落到一套真实项目里。当前仓库的实现路径与这一要求是吻合的。"),
     ],
@@ -96,6 +314,7 @@ REPORT_CONTENT = {
     ],
     "1.3 项目特色": [
         para("第一，统一入口清楚。前台按总览、节点、服务、链路、调试五个视角组织页面，用户不需要在多个后台之间来回切换。"),
+        para("统一入口不只是把菜单放到同一页面里。当前使用路径通常是先在总览页看节点计数、异常入口和趋势，再进入节点详情或服务详情确认资源和抓取入口，接着去链路页查看业务 Trace，最后在调试页或原生后台回证 targets 和原始查询。"),
         para("第二，演示链路是真实的。`sample-service` 会调用 `middleware-service`，后者继续访问 MySQL、Redis 和 Nginx，因此指标和 Trace 不是静态样例。"),
         para("第三，工程化比较完整。仓库内已经提供 Docker Compose 启动方式、GitHub Actions 测试与部署工作流、配置回归脚本和冒烟脚本，适合课程展示和复现。"),
         para("仓库当前还启用了 `main` 分支保护：禁止删除和强推，改动需通过 Pull Request 合入，至少 1 个评审通过并解决评审线程，`frontend-build`、`backend-test`、`agent-test` 三项状态检查必须通过，并要求按最新主分支严格复核。"),
@@ -122,14 +341,14 @@ REPORT_CONTENT = {
         table(
             [
                 ["监控对象", "识别方式", "当前采集或接入方式", "当前指标入口或状态"],
-                ["Linux 主机", "Agent 所在节点自动纳管", "Agent 读取 `/proc`、`df` 等系统信息并随心跳上报", "node_exporter `/metrics`"],
-                ["Spring Boot 应用", "`java` 进程与 Spring 启动特征", "Actuator + Micrometer", "`/actuator/prometheus`"],
-                ["Nginx", "进程名含 `nginx`", "`nginx-prometheus-exporter` 抓取 `nginx_status`", "`:9113/metrics`"],
-                ["Redis", "进程名含 `redis-server`", "`redis_exporter`", "`:9121/metrics`"],
-                ["MySQL", "进程名含 `mysqld` 或 `mariadbd`", "当前只做服务识别", "刻意不接独立 exporter，前台显示 `NO_SCRAPE_ENDPOINT`"],
-                ["node_exporter", "进程名含 `node_exporter`", "Prometheus 直接抓取", "`/metrics`"],
+                ["Linux 主机", "Agent 所在节点自动纳管", "Agent 读取 /proc、df 等信息并随心跳上报", "node_exporter /metrics"],
+                ["Spring Boot 应用", "java 进程与 Spring 启动特征", "Actuator + Micrometer", "/actuator/prometheus"],
+                ["Nginx", "进程名含 nginx", "nginx exporter 抓取 nginx_status", ":9113/metrics"],
+                ["Redis", "进程名含 redis-server", "redis_exporter", ":9121/metrics"],
+                ["MySQL", "进程名含 mysqld 或 mariadbd", "仅做服务识别", "刻意不接 exporter，前台标为 NO_SCRAPE_ENDPOINT"],
+                ["node_exporter", "进程名含 node_exporter", "Prometheus 直接抓取", "/metrics"],
             ],
-            [1.15, 1.45, 2.15, 2.1],
+            [1.05, 1.35, 2.0, 2.45],
         ),
     ],
     "2、综合描述": [
@@ -168,6 +387,8 @@ REPORT_CONTENT = {
     "2.2 运行环境": [
         para("项目按核心开发层、观测层和演示节点层拆成不同 profile。日常联调和答辩演示使用的启动范围不同。"),
         para(f"当前代码仓库地址为 {REPO_URL}。当前公网部署访问地址为 {DEPLOY_PUBLIC_URL}，该云服务器租期到 {DEPLOY_EXPIRES}，可作为答辩与验收期间的在线演示入口。"),
+        para("当前仓库中的关键运行版本可以直接核对到代码与编排文件：后端使用 Spring Boot 3.3.5 和 Java 21，前端依赖 Vue 3.5.13、Vue Router 4.5.0、ECharts 5.6.0、Vite 8.0.14，容器使用 Node 22，Agent 使用 Go 1.23，观测组件使用 Prometheus 2.54.1、Grafana 11.2.2、SkyWalking 10.0.1，数据库为 MySQL 8.4。"),
+        para("Agent 采集依赖 `/proc/stat`、`/proc/meminfo`、`/proc/net/dev` 以及 `df`、`ps`、`ss` 等 Linux 侧能力，因此被纳管节点当前默认假定为 Linux 环境。"),
         table(
             [
                 ["类别", "内容"],
@@ -181,12 +402,14 @@ REPORT_CONTENT = {
             [1.35, 4.8],
         ),
         image("pics/节点视图.png", 5.8, "节点视图总览"),
+        para(f"本报告中的前台页面截图均来自公网部署地址 {DEPLOY_PUBLIC_URL} 的实际访问结果，不使用本地开发环境截图。"),
     ],
     "2.3 设计和实现上的限制": [
         para("服务识别由 `agent/internal/discovery/discovery.go` 中的固定规则完成，当前只内置 `sample-service`、`middleware-service`、`nginx`、`mysql`、`redis` 和 `node-exporter` 六类对象的识别规则。"),
         para("Prometheus 抓取目标通过 `infra/prometheus/prometheus.yml` 静态配置。当前抓取对象包括 backend、两台语义节点、两套 Spring Boot 服务、nginx 和 redis，不包含 MySQL。Agent 发现到的新服务会先进入平台服务目录，不会自动写回抓取配置。"),
         para("前端容器执行 `npm run dev -- --host 0.0.0.0 --port 5173`，后端通过 `spring-boot:run` 启动，SkyWalking OAP 使用 `SW_STORAGE=h2`。当前部署形态用于课程演示和联调。"),
         para("Agent 能识别 MySQL，但当前未配置独立 exporter，因此服务页会把它标记为 `NO_SCRAPE_ENDPOINT`。"),
+        para("节点列表当前通过 `managedNodeRepository.findAll().stream()` 在内存中按状态、关键字和服务类型过滤，再做排序。这说明平台规模假设仍偏向课程设计和小规模节点场景。"),
         table(
             [
                 ["限制项", "仓库依据", "当前影响"],
@@ -203,6 +426,7 @@ REPORT_CONTENT = {
         para("平台运行依赖 Docker、Docker Compose 和容器网络。核心层、观测层和演示节点层都建立在同一套 Compose 编排上。"),
         para("链路页依赖真实业务流量。仓库通过 `traffic-generator.sh` 和部署脚本中的 `warmup_business_traces` 持续触发 `/api/demo-chain`，用来稳定产出业务 Trace。"),
         para("远端自动部署依赖目标服务器预置 `.env`、Docker 环境、Git 仓库和 SSH 凭据；GitHub Actions 还依赖 `DEPLOY_HOST`、`DEPLOY_PORT`、`DEPLOY_USER`、`DEPLOY_SSH_KEY` 等 secrets。"),
+        para("当前两台语义节点都以 Compose 容器方式接入同一网络，便于 Prometheus 抓取、后端互访和演示链路贯通。如果只启动核心层而不补 observability 与 nodes profile，工作台虽然能打开，但不会形成完整的指标和业务链路展示。"),
         table(
             [
                 ["依赖项", "主要作用", "缺失后的直接结果", "当前验证入口"],
@@ -244,12 +468,16 @@ REPORT_CONTENT = {
         ),
         image("pics/腾讯文档-心跳上报流程图.png", 5.2, "Agent 心跳上报流程图"),
         para("心跳上报链路决定了平台状态是否可信。节点状态、资源指标和最近心跳时间都沿着这条链路进入后端，再被总览页、节点页和趋势接口消费。"),
-        image("pics/节点详情（资源监控）.png", 5.8, "节点详情中的资源监控"),
+        para("注册接口按 `nodeName` 识别节点。重复注册不会生成重复节点，而是更新该节点的基础信息，并把本次发现到的服务目录同步到后端。这保证节点名既是展示标识，也是平台当前去重和持续更新的主键。"),
+        para("心跳接口除刷新状态外，还会写入 `HeartbeatEvent`；如果本次指标不完整，后端会与上一条 `NodeMetrics` 合并后再入库，尽量保持节点详情页的资源图表连续。"),
+        image("pics/节点详情（资源监控）.png", 6.2, "节点详情中的资源监控"),
         para("节点详情页把 CPU、内存、磁盘、网络和服务清单放在同一入口，便于从单个节点继续下钻。"),
         image("pics/服务详情（基础信息）.png", 5.8, "服务详情中的基础信息与监控入口"),
         para("服务详情页同时展示服务基础信息、抓取入口、Trace 入口和原始监控链接，便于确认某个服务的接入状态。"),
+        para("节点列表支持按状态、关键字、服务类型筛选，并支持按最近心跳排序。趋势接口单次最大查询窗口为 720 小时，前台当前提供 15 分钟、30 分钟、1 小时、2 小时、4 小时和 24 小时六档快捷范围。"),
+        para("接口设计也有明显的读写分工。`/api/agents/register` 和 `/api/agents/heartbeat` 面向 Agent 写入，`/api/overview`、`/api/nodes`、`/api/services`、`/api/tracing/summary` 等接口面向工作台读取聚合结果。"),
         image("pics/架构图（观测数据流）.png", 5.8, "观测数据流"),
-        image("pics/链路追踪全览.png", 5.8, "链路追踪全览"),
+        image("pics/链路追踪全览.png", 6.2, "链路追踪全览"),
         image("pics/调试面板.png", 5.8, "调试面板"),
         para("调试面板保留了 Prometheus targets 和原始 query 入口，用于确认抓取链路和标签是否正确。"),
     ],
@@ -286,16 +514,21 @@ REPORT_CONTENT = {
     "4.2 可靠性需求": [
         para("后端对心跳状态做合法性校验，对缺失指标做与上一条数据的合并，避免图表因为单次上报不完整而断裂。"),
         image("pics/腾讯文档-Agent心跳状态流转图.png", 5.4, "Agent 心跳状态流转图"),
-        para("节点状态不是简单的在线或离线二分。后端把 `ONLINE`、`OFFLINE`、`WARNING` 作为允许状态，并以 90 秒作为心跳超时阈值，超时节点会直接落入告警口径。"),
+        para("节点状态不是简单的在线或离线二分。后端把 `ONLINE`、`OFFLINE`、`WARNING` 作为允许状态，并以 45 秒作为延迟风险提示线、90 秒作为心跳超时阈值。超过 45 秒会提示“心跳延迟，存在超时风险”，超过 90 秒则按“心跳超时，可能失联”处理。"),
         para("应用启动后会补写历史节点缺失的 `lastHeartbeatAt`，避免升级后旧节点全部显示为“等待心跳上报”。"),
+        para("两台演示节点中的核心进程都由 `supervisord` 托管，并设置 `autorestart=true`。`sample-service`、`middleware-service`、`node_exporter`、`nginx-exporter`、`redis-exporter`、`monitor-agent` 和 `traffic-generator` 出现容器内单进程退出时，会自动拉起。"),
+        para("数据库容器配置了 `mysqladmin ping` 健康检查，`backend` 依赖 `service_healthy` 后再启动。部署脚本在容器启动后还会继续等待前后端、Prometheus、Grafana、SkyWalking、节点注册、Prometheus targets 和业务 Trace，就算容器已经起来，也不会把“系统未通”误判成部署成功。"),
         para("部署脚本在拉起容器后，依次检查后端、前端、Prometheus、Grafana、SkyWalking、节点注册、服务目录、Prometheus targets 和 `/api/demo-chain` 业务 Trace。"),
         para("后端每 5 分钟保存一次平台快照，每周一凌晨清理 30 天前的快照和 7 天前的节点指标。"),
+        para("MySQL、Prometheus 和 Grafana 都使用 named volume 持久化。普通重启不会清空平台主数据、抓取库和仪表盘状态；只有显式执行 `docker compose down -v` 之类的清卷操作时，相关数据才会被一并移除。"),
         image("pics/Prometheus后台（targets）.png", 5.7, "Prometheus targets 状态"),
     ],
     "4.3 安全性需求": [
         para("安全边界主要在部署链路和观测后台访问。部署文档明确区分“本机到服务器”的登录密钥和“服务器到 GitHub”的拉代码密钥。"),
         para("部署脚本先备份服务器 `.env`，同步代码后再恢复配置，避免 `git reset --hard origin/main` 覆盖服务器上的运行参数。"),
         para("Grafana 允许匿名只读访问，供前台嵌入监控面板。Prometheus 调试入口保留在受控演示网络内使用。"),
+        para("当前安全策略以演示可用为主。后端 `/api/**` 放开 `GET`、`POST`、`OPTIONS`，并允许跨域 `*`；前台和脚本联调更直接。"),
+        para("数据库密码和部署参数通过环境变量注入；后端 Actuator 当前只暴露 `health`、`info`、`prometheus` 三个端点。结合 Grafana 的匿名 Viewer 设置。"),
     ],
     "4.4 可维护性需求": [
         para("仓库目录按前端、后端、Agent、演示节点、基础设施、部署脚本和测试脚本分开，职责边界清楚。"),
@@ -314,6 +547,7 @@ REPORT_CONTENT = {
         para("节点注册和节点心跳分两条写路径处理。注册负责节点与服务目录，心跳负责状态、心跳事件和主机指标。"),
         para("数据库侧使用 JPA 实体和事务方法维护节点、服务、心跳事件、节点指标和平台快照。趋势图的数据源来自快照表，和页面即时查询口径保持一致。"),
         para("节点列表、节点详情、服务详情和趋势页都基于同一套节点表、服务表和快照表，只是展示粒度不同。SkyWalking Trace 摘要由后端实时查询 GraphQL，不回写本地数据库。"),
+        para("`metrics_snapshots` 表还对 `timestamp` 建了正序和倒序索引，便于按时间窗口读取趋势和执行历史清理。平台级趋势查询因此不需要在快照表上做全表顺序扫描。"),
         table(
             [
                 ["写入或读取路径", "主要实体或来源", "消费位置", "一致性体现"],
@@ -471,7 +705,7 @@ REQ_CONTENT = {
             ],
             [1.55, 1.15, 3.2],
         ),
-        image("pics/总览.png", 5.8, "总览页示意"),
+        image("pics/总览.png", 6.2, "总览页示意"),
     ],
     "2.3 设计和实现上的限制": [
         para("服务识别基于静态规则。它适合当前演示链路，不等于对任意程序都能自动建模。"),
@@ -603,6 +837,7 @@ DESIGN_CONTENT = {
     "1.1 编写目的": [
         para("设计文档直接对应当前仓库的部署结构、数据流、接口分工和数据库职责。"),
         para(f"设计说明对应的源码仓库为 {REPO_URL}，当前在线部署入口为 {DEPLOY_PUBLIC_URL}，该云服务器租期到 {DEPLOY_EXPIRES}。"),
+        para("设计说明覆盖的对象包括三类信息：节点基础信息、主机资源利用率、服务目录与调用链信息。文档中的结构设计和接口设计都围绕这三类信息如何采集、聚合和展示展开。"),
         para("系统设计围绕采集、聚合、查询和展示四层协作关系展开。"),
     ],
     "1.2 概要设计": [
@@ -618,7 +853,7 @@ DESIGN_CONTENT = {
             ],
             [1.4, 5.0],
         ),
-        image("pics/总览.png", 5.8, "统一工作台总览"),
+        image("pics/总览.png", 6.2, "统一工作台总览"),
     ],
     "1.3 业务流程图": [
         para("典型业务流程是：前台用户访问总览或详情页面；后端返回节点、服务、趋势或 Trace 摘要；用户继续下钻时，前台再通过嵌入或跳转方式进入 Grafana、Prometheus 或 SkyWalking。"),
@@ -634,6 +869,7 @@ DESIGN_CONTENT = {
     "2、系统总体结构设计": [
         para("从部署拓扑看，系统分为平台控制面、观测底座和两个语义节点。平台控制面负责统一入口和平台元数据；观测底座负责指标与链路；语义节点负责生成真实业务和被观测对象。"),
         para("这种结构的关键不是组件数量，而是交互关系清楚：Agent 面向后端上报，Prometheus 面向指标入口抓取，SkyWalking 面向 Java Agent 接收 Trace，前端同时消费后端聚合数据和观测系统可视化入口。"),
+        para("统一工作台在结构上承担的是“排障入口编排器”角色。总览、节点、服务、链路、调试五类页面不是并列孤岛，而是按先看全局、再看对象、再看链路、最后回证抓取的顺序组织。"),
         image("pics/腾讯文档-总体架构图.png", 5.6, "平台总体架构图"),
         para("总体架构图强调部署关系：平台控制面居中，观测底座提供共用能力，两台语义节点既产生业务流量，也承担被观测对象。"),
         image("pics/腾讯文档-服务发现与识别模块图.png", 5.6, "服务发现与识别模块图"),
@@ -684,9 +920,10 @@ DESIGN_CONTENT = {
         ),
         image("pics/UML-统一工作台页面映射图.png", 5.8, "统一工作台页面映射图"),
         para("页面映射图说明统一入口不是简单罗列菜单，而是按巡检、下钻、追踪和回证的顺序组织。总览、节点、服务、链路、调试五类页面分别对应不同排障层次。"),
-        image("pics/节点详情（资源监控）.png", 5.8, "节点详情中的资源监控与下钻入口"),
+        image("pics/节点详情（资源监控）.png", 6.2, "节点详情中的资源监控与下钻入口"),
         para("Compose profile 的拆分也是结构设计的一部分。核心开发层用于前后端和数据库独立联调，observability 与 nodes 两个 profile 用于补齐完整观测闭环。"),
         para("当前部署形态保持演示环境取向。`backend` 通过 `spring-boot:run` 启动，`frontend` 通过 `vite dev` 启动，SkyWalking OAP 使用 H2 存储。"),
+        para("Agent 的采集方式也限定了当前结构边界。CPU、内存、网络和磁盘数据直接读取 Linux `/proc` 与系统命令，因此被观测节点当前默认假定为 Linux，而不是跨平台通用 Agent。"),
     ],
     "3、类图及接口设计": [
         para("类图和接口设计重点说明真正承担平台职责的模块和接口，不展开全部类的 UML。"),
@@ -769,6 +1006,8 @@ DESIGN_CONTENT = {
         image("pics/UML-节点状态判定状态图.png", 5.4, "节点状态判定状态图"),
         para("状态图把 `effectiveStatus` 等规则的结果直观化。当前实现重点区分注册成功、持续心跳正常和心跳超时告警，不把所有异常都折叠成同一种状态。"),
         para("接口设计上的一个明显特点是读写分离。`/api/agents/register` 和 `/api/agents/heartbeat` 只承担写入职责，PortalController 下面的 `/api/overview`、`/api/nodes`、`/api/services`、`/api/tracing/summary` 等接口则面向前台读场景返回聚合 DTO。"),
+        para("注册接口内部按 `nodeName` 定位节点。重复注册会更新该节点的基础信息和服务目录，而不是插入重复主机记录；这使节点名在当前设计中承担了注册幂等键的作用。"),
+        para("列表与趋势接口也体现了当前规模假设。节点列表在服务层内存过滤并支持按最近心跳排序，趋势查询最大窗口为 720 小时，前台则提供 15 分钟到 24 小时的常用快捷范围。"),
         para("这种分工能减少接口语义混乱：Agent 不需要关心前台如何展示，前台也不需要理解主机采样细节，只要消费已经整理好的节点、服务、趋势和 Trace 摘要结果即可。"),
         para("前端的 `observability.js` 还负责第二层组织工作。它根据节点名、服务名、指标端口和服务类型拼装 Grafana、Prometheus、SkyWalking 的嵌入地址与回跳地址，使页面组件不必直接处理复杂的外部 URL 规则。"),
         image("pics/服务详情（运行指标）.png", 5.8, "服务详情中的运行指标面板"),
@@ -837,6 +1076,7 @@ DESIGN_CONTENT = {
             ],
             [1.4, 2.15, 2.65],
         ),
+        para("`metrics_snapshots` 还对 `timestamp` 建立了正序和倒序索引，说明该表的主要读取方式就是按时间窗口取最近一段快照，并支持清理旧数据时快速定位时间边界。"),
         table(
             [
                 ["关系", "说明"],
@@ -1027,7 +1267,7 @@ TEST_CONTENT = {
         ),
         para("工作流顺序为：先在 PR 阶段完成前端、后端、Agent 的基础回归，再在 main 工作流中补齐配置检查、完整冒烟和远端部署。"),
         image("pics/Prometheus后台（targets）.png", 5.8, "Prometheus targets 截图"),
-        image("pics/Prometheus后台（service discovery）.png", 5.8, "Prometheus service discovery 截图"),
+        image("pics/Prometheus后台（service discovery）.png", 6.2, "Prometheus service discovery 截图"),
         image("pics/SkyWalking Trace.png", 5.8, "SkyWalking Trace 截图"),
         image("pics/GitHub actions.png", 5.8, "GitHub Actions 截图"),
         image("pics/调试面板.png", 5.8, "调试面板截图"),
@@ -1068,26 +1308,24 @@ REQ_HEADING_RENAMES = {
 
 
 def set_cover(document: Document, doc_type: str) -> None:
-    document.paragraphs[3].text = f" 软件工程课程设计{doc_type}"
-    if doc_type == "报告书":
-        document.paragraphs[6].text = f"题目：{TITLE}"
-    else:
-        document.paragraphs[6].text = f"题目：{TITLE}——{doc_type}"
-    document.paragraphs[10].text = f"学  院  {COLLEGE}"
-    document.paragraphs[11].text = f"专  业  {MAJOR}"
-    document.paragraphs[12].text = f"组长姓名  {LEADER}"
-    document.paragraphs[13].text = f"组  员  {MEMBERS}"
-    document.paragraphs[14].text = f"指导教师  {MENTOR}"
-    document.paragraphs[15].text = f"课程编号  {COURSE_CODE}"
-    document.paragraphs[16].text = f"课程学分  {CREDITS}"
-    document.paragraphs[17].text = f"起始日期  {START_DATE}"
+    topic = TITLE if doc_type == "报告书" else f"{TITLE}—{doc_type}"
+    set_cover_line(document.paragraphs[3], COVER_TITLE)
+    set_cover_line(document.paragraphs[6], topic)
+    set_cover_field(document.paragraphs[10], "学  院   ", COLLEGE, 21)
+    set_cover_field(document.paragraphs[11], "专  业   ", MAJOR, 22)
+    set_cover_field(document.paragraphs[12], "组长姓名 ", LEADER, 21)
+    set_cover_field(document.paragraphs[13], "组  员   ", MEMBERS, 19)
+    set_cover_field(document.paragraphs[14], "指导教师 ", MENTOR, 22)
+    set_cover_field(document.paragraphs[15], "课程编号 ", COURSE_CODE, 22)
+    set_cover_field(document.paragraphs[16], "课程学分 ", CREDITS, 22)
+    set_cover_field(document.paragraphs[17], "起始日期 ", START_DATE, 21)
 
 
 def rename_headings(document: Document, mapping: dict[str, str]) -> None:
     for paragraph in document.paragraphs:
         text = paragraph.text.strip()
         if text in mapping:
-            paragraph.text = mapping[text]
+            set_paragraph_text_like_existing(paragraph, mapping[text])
 
 
 def find_paragraph(document: Document, text: str) -> Paragraph:
@@ -1124,49 +1362,63 @@ def append_paragraph_after(anchor: Paragraph, text: str, align: WD_ALIGN_PARAGRA
     anchor._p.addnext(new_p)
     paragraph = Paragraph(new_p, anchor._parent)
     run = paragraph.add_run(text)
-    run.font.size = Pt(10.5)
-    run.italic = italic
-    paragraph.paragraph_format.space_after = Pt(6)
-    paragraph.paragraph_format.line_spacing = 1.25
+    set_run_style(run, font_name=BODY_FONT, size_pt=12, italic=italic)
+    paragraph.paragraph_format.space_after = Pt(0)
+    paragraph.paragraph_format.line_spacing = 1.5
     if align is not None:
         paragraph.alignment = align
     return paragraph
 
 
-def append_image_after(anchor: Paragraph, image_path: Path, width_in: float, caption: str, figure_no: int) -> Paragraph:
+def append_image_after(document: Document, anchor: Paragraph, image_path: Path, width_in: float, caption: str, figure_no: int) -> Paragraph:
     image_paragraph = append_paragraph_after(anchor, "", align=WD_ALIGN_PARAGRAPH.CENTER)
     image_paragraph.paragraph_format.space_after = Pt(4)
-    image_paragraph.runs[0].add_picture(str(image_path), width=Inches(width_in))
+    image_paragraph.runs[0].add_picture(str(image_path), **picture_kwargs(document, image_path, width_in))
     caption_paragraph = append_paragraph_after(
         image_paragraph,
         f"图{figure_no} {caption}",
         align=WD_ALIGN_PARAGRAPH.CENTER,
         italic=True,
     )
+    if caption_paragraph.runs:
+        set_run_style(caption_paragraph.runs[0], font_name=BODY_FONT, size_pt=10.5, italic=True)
     caption_paragraph.paragraph_format.space_after = Pt(8)
     return caption_paragraph
 
 
-def format_table(table_obj: Table, widths: list[float] | None = None) -> None:
+def format_table(table_obj: Table, column_widths: list[float]) -> None:
     try:
-        table_obj.style = "Normal Table"
+        table_obj.style = "Table Grid"
     except KeyError:
-        pass
+        try:
+            table_obj.style = "Normal Table"
+        except KeyError:
+            pass
     table_obj.alignment = WD_TABLE_ALIGNMENT.CENTER
+    table_obj.autofit = False
+    set_table_borders(table_obj)
+    apply_column_widths(table_obj, column_widths)
+    if table_obj.rows:
+        mark_header_row(table_obj.rows[0])
     for row_index, row in enumerate(table_obj.rows):
         for col_index, cell in enumerate(row.cells):
             cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-            if widths and col_index < len(widths):
-                cell.width = Inches(widths[col_index])
+            set_cell_margins(cell, top=105, bottom=105, start=135, end=135)
+            if row_index == 0:
+                set_cell_shading(cell, TABLE_HEADER_FILL)
+            elif row_index % 2 == 0:
+                set_cell_shading(cell, TABLE_ALT_FILL)
+            else:
+                set_cell_shading(cell, None)
             for para_obj in cell.paragraphs:
-                para_obj.paragraph_format.space_after = Pt(2)
-                para_obj.paragraph_format.line_spacing = 1.1
+                para_obj.paragraph_format.space_after = Pt(0)
+                para_obj.paragraph_format.line_spacing = 1.15
                 para_obj.alignment = WD_ALIGN_PARAGRAPH.CENTER if row_index == 0 else WD_ALIGN_PARAGRAPH.LEFT
                 if row_index == 0:
                     for run in para_obj.runs:
                         run.bold = True
                 for run in para_obj.runs:
-                    run.font.size = Pt(9.5)
+                    set_run_style(run, font_name=BODY_FONT, size_pt=10.5, bold=run.bold)
 
 
 def append_table_after(document: Document, anchor: Paragraph, rows: list[list[str]], widths: list[float] | None = None) -> Paragraph:
@@ -1176,35 +1428,12 @@ def append_table_after(document: Document, anchor: Paragraph, rows: list[list[st
         for col_index, value in enumerate(row_data):
             cell = table_obj.cell(row_index, col_index)
             cell.text = value
-    format_table(table_obj, widths)
+    format_table(table_obj, resolve_column_widths(document, rows, widths))
     tail = OxmlElement("w:p")
     table_obj._tbl.addnext(tail)
     tail_paragraph = Paragraph(tail, anchor._parent)
     tail_paragraph.paragraph_format.space_after = Pt(6)
     return tail_paragraph
-
-
-def move_teacher_table_to_end(document: Document) -> None:
-    teacher_table = None
-    for table_obj in document.tables:
-        if table_obj.rows and table_obj.rows[0].cells:
-            normalized = "".join(table_obj.rows[0].cells[0].text.split()).replace("/", "")
-            if "教师评语" in normalized:
-                teacher_table = table_obj._tbl
-                break
-    if teacher_table is None:
-        return
-    body = document._element.body
-    body.remove(teacher_table)
-    page_break_paragraph = OxmlElement("w:p")
-    run = OxmlElement("w:r")
-    page_break = OxmlElement("w:br")
-    page_break.set(qn("w:type"), "page")
-    run.append(page_break)
-    page_break_paragraph.append(run)
-    insert_index = len(body) - 1
-    body.insert(insert_index, page_break_paragraph)
-    body.insert(insert_index + 1, teacher_table)
 
 
 def apply_blocks(document: Document, content: dict[str, list[dict]]) -> None:
@@ -1217,7 +1446,7 @@ def apply_blocks(document: Document, content: dict[str, list[dict]]) -> None:
             if block["type"] == "paragraph":
                 anchor = append_paragraph_after(anchor, block["text"])
             elif block["type"] == "image":
-                anchor = append_image_after(anchor, ROOT / block["path"], block["width"], block["caption"], image_index)
+                anchor = append_image_after(document, anchor, ROOT / block["path"], block["width"], block["caption"], image_index)
                 image_index += 1
             elif block["type"] == "table":
                 anchor = append_table_after(document, anchor, block["rows"], block.get("widths"))
@@ -1231,7 +1460,6 @@ def build_report_doc() -> None:
     document = Document(output)
     set_cover(document, "报告书")
     apply_blocks(document, REPORT_CONTENT)
-    move_teacher_table_to_end(document)
     document.save(output)
 
 
@@ -1242,7 +1470,6 @@ def build_requirements_doc() -> None:
     rename_headings(document, REQ_HEADING_RENAMES)
     set_cover(document, "需求说明书")
     apply_blocks(document, REQ_CONTENT)
-    move_teacher_table_to_end(document)
     document.save(output)
 
 
@@ -1252,7 +1479,6 @@ def build_design_doc() -> None:
     document = Document(output)
     set_cover(document, "设计文档")
     apply_blocks(document, DESIGN_CONTENT)
-    move_teacher_table_to_end(document)
     document.save(output)
 
 
@@ -1262,7 +1488,6 @@ def build_test_doc() -> None:
     document = Document(output)
     set_cover(document, "测试文档")
     apply_blocks(document, TEST_CONTENT)
-    move_teacher_table_to_end(document)
     document.save(output)
 
 
