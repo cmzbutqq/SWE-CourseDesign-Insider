@@ -30,7 +30,7 @@
 | `deploy/` | 远端部署脚本与服务器初始化说明 |
 | `tests/` | 冒烟测试与部署/配置回归脚本 |
 | `pics/` | 当前界面与后台截图，可直接用于报告或答辩素材 |
-| `documents/base/` | 课程设计原始材料与模板文档 |
+| `报告与材料/` | 课程设计报告、设计/测试文档、答辩材料与原始模板文档 |
 
 ## 运行前准备
 
@@ -159,7 +159,7 @@ docker compose down
 
 ## 进一步阅读
 
-- [docs/项目说明.md](docs/项目说明.md)：答辩/汇报视角的系统说明
+- [报告与材料/base/项目说明.md](报告与材料/base/项目说明.md)：答辩/汇报视角的系统说明
 - [deploy/server-bootstrap.md](deploy/server-bootstrap.md)：部署服务器初始化说明
 - [tests/smoke-test.sh](tests/smoke-test.sh)：当前完整验收脚本
 
